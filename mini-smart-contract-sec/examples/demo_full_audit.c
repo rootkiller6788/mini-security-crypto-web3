@@ -167,8 +167,8 @@ int main(void) {
     od_sub_underflow(0, 1, &r);
     od_check_operation(&od, "-", 0, 1, r, 2);
 
-    od_mul_overflow(0x10000000000000000ULL, 0x10, &r);
-    od_check_operation(&od, "*", 0x10000000000000000ULL, 0x10, r, 3);
+    od_mul_overflow(UINT64_MAX, 2, &r);
+    od_check_operation(&od, "*", UINT64_MAX, 2, r, 3);
 
     od_check_operation(&od, "/", 100, 0, 0, 4);
 

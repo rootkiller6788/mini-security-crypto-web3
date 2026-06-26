@@ -21,7 +21,7 @@ void fv_reset(fv_analyzer_t *a) {
 void fv_sym_set_concrete(fv_symbolic_state_t *s, int id, int64_t val) {
     if (id < 0 || id >= FV_MAX_VARS) return;
     s->vars[id].type = FV_SYM_CONCRETE;
-    s->vars[id].concrete = val;
+    s->vars[id].val.concrete = val;
 }
 
 void fv_sym_set_symbolic(fv_symbolic_state_t *s, int id, const char *name,
@@ -278,24 +278,155 @@ void fv_fuzz_run_seed(fv_analyzer_t *a, void (*target_fn)(uint64_t, uint64_t),
     }
 }
 
+/* ================================================================
+ * L7: Mythril-style integer overflow detector (SWC-101)
+ *
+ * Heuristic: Examines the CFG for patterns that suggest unchecked
+ * arithmetic. In a real implementation, this would use SMT solving
+ * (Z3) to find concrete inputs that trigger overflow.
+ *
+ * Our simplified version checks:
+ * 1. Whether any ADD/MUL operations exist in paths that lack
+ *    overflow guards (require statements checking bounds).
+ * 2. Whether assertion failures on arithmetic paths are zero
+ *    (meaning no guards protect the arithmetic).
+ *
+ * Reference: Mythril source (ConsenSys), SWC Registry SWC-101.
+ * ================================================================ */
 int fv_mythril_detect_overflow(const fv_analyzer_t *a) {
-    (void)a;
+    /* Heuristic: if a CFG path contains arithmetic without a
+     * preceding require/assert guarding against overflow, report it.
+     * We approximate this by checking if any non-reverted paths
+     * lack bounds-check assertions. */
+    int risk = 0;
+    for (int i = 0; i < a->path_count; i++) {
+        const fv_path_t *p = &a->paths[i];
+        /* A path with no assertion that completed without revert
+         * is a potential unchecked arithmetic path. */
+        if (!p->reverted && !p->asserted && p->reached) {
+            risk++;
+        }
+    }
+    /* Any path with no guard is a potential overflow risk */
+    if (risk > 0) return risk;
+    /* If invariants don't hold, overflow is more likely */
+    if (!a->invariants_hold) return 1;
     return 0;
 }
 
+/* ================================================================
+ * L7: Mythril-style reentrancy detector (SWC-107)
+ *
+ * Heuristic: The CFG is analyzed for patterns where:
+ * 1. An external CALL/DELEGATECALL occurs before SSTORE in the
+ *    same execution path.
+ * 2. Paths exist where state is read (SLOAD) after an external call
+ *    without re-checking guard conditions.
+ *
+ * In our symbolic execution model, we approximate this by checking
+ * whether any path reaches sensitive operations without prior guards.
+ *
+ * Reference: Mythril source (ConsenSys), SWC Registry SWC-107.
+ * ================================================================ */
 int fv_mythril_detect_reentrancy(const fv_analyzer_t *a) {
-    (void)a;
-    return 0;
+    /* Heuristic: if the CFG has blocks that are conditional but
+     * lack assertion guards on the revert branch, reentrancy is
+     * possible. We check for paths where control resumes after
+     * an external interaction without re-validating state. */
+    int risk = 0;
+    for (int i = 0; i < a->cfg.block_count; i++) {
+        const fv_block_t *b = &a->cfg.blocks[i];
+        /* A conditional block with two successors where neither
+         * is a revert suggests a missing guard. */
+        if (b->is_conditional && b->succ_count == 2) {
+            bool has_revert_branch = false;
+            for (int j = 0; j < b->succ_count; j++) {
+                if (b->succ[j] >= 0 && b->succ[j] < a->cfg.block_count) {
+                    if (a->cfg.blocks[b->succ[j]].is_revert) {
+                        has_revert_branch = true;
+                    }
+                }
+            }
+            if (!has_revert_branch) risk++;
+        }
+    }
+    /* Higher risk if no invariants verified */
+    if (!a->invariants_hold) risk += 2;
+    return risk;
 }
 
+/* ================================================================
+ * L7: Slither-style unchecked low-level call detector (SWC-104)
+ *
+ * Detects patterns where low-level CALL/DELEGATECALL/SEND return
+ * values are not checked. In Solidity, these operations return a
+ * boolean success flag that must be verified.
+ *
+ * Heuristic: If the CFG has blocks following CALL-type operations
+ * that do not check the return value (no conditional branch on the
+ * result), report them.
+ *
+ * Reference: Slither (Trail of Bits), SWC Registry SWC-104.
+ * ================================================================ */
 int fv_slither_detect_unchecked_call(const fv_analyzer_t *a) {
-    (void)a;
-    return 0;
+    /* Heuristic: Check if there are paths in the CFG that represent
+     * call operations without subsequent conditional checks.
+     * We approximate this by checking for blocks that have successors
+     * without conditional branching (straight-line after potential CALL). */
+    int risk = 0;
+    for (int i = 0; i < a->cfg.block_count; i++) {
+        const fv_block_t *b = &a->cfg.blocks[i];
+        /* A block without conditional branching that has successors
+         * might represent an unchecked call path. */
+        if (!b->is_conditional && b->succ_count == 1 &&
+            !b->is_revert && !b->is_return && !b->is_assert) {
+            risk++;
+        }
+    }
+    /* If taint analysis shows user input reaching sensitive sinks
+     * without intermediate checks, that's also a red flag. */
+    for (int i = 0; i < a->taint.var_count; i++) {
+        if (a->taint.vars[i].reaches_sensitive &&
+            a->taint.vars[i].level >= FV_TAINT_USER_INPUT) {
+            risk++;
+        }
+    }
+    return risk;
 }
 
+/* ================================================================
+ * L7: Slither-style suicidal contract detector (SWC-106)
+ *
+ * Detects contracts that can be destroyed via SELFDESTRUCT by
+ * unauthorized parties. Checks whether:
+ * 1. SELFDESTRUCT is reachable from any entry point.
+ * 2. There are insufficient access controls on paths leading to
+ *    self-destruction.
+ *
+ * Heuristic: If the CFG contains a path to a revert/terminator
+ * that lacks an assertion check (access control guard), it may
+ * be vulnerable to unauthorized self-destruction.
+ *
+ * Reference: Slither (Trail of Bits), SWC Registry SWC-106.
+ * ================================================================ */
 int fv_slither_detect_suicidal(const fv_analyzer_t *a) {
-    (void)a;
-    return 0;
+    /* Heuristic: Check if any path ends in a terminator (which could
+     * represent SELFDESTRUCT) without prior access control assertions. */
+    int risk = 0;
+    for (int i = 0; i < a->path_count; i++) {
+        const fv_path_t *p = &a->paths[i];
+        /* A path that reverts without a prior assertion check suggests
+         * the revert is unconditional (could be selfdestruct). */
+        if (p->reverted && !p->asserted && p->reached) {
+            risk++;
+        }
+    }
+    /* If assertion failures exist but invariants still claim to hold,
+     * there may be logical gaps exploitable for self-destruction. */
+    if (a->assertion_failures > 0 && a->invariants_hold) {
+        risk++;
+    }
+    return risk;
 }
 
 void fv_print_report(const fv_analyzer_t *a) {
@@ -317,7 +448,7 @@ void fv_print_report(const fv_analyzer_t *a) {
 void fv_print_cfg(const fv_cfg_t *cfg) {
     printf("\n--- Control Flow Graph (%d blocks) ---\n", cfg->block_count);
     for (int i = 0; i < cfg->block_count; i++) {
-        fv_block_t *b = &cfg->blocks[i];
+        const fv_block_t *b = &cfg->blocks[i];
         printf("  B%d [%s] L%d", b->id, b->label, b->line);
         if (b->is_conditional) printf(" (cond)");
         if (b->is_assert) printf(" (assert)");

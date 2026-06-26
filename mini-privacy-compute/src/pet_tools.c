@@ -358,6 +358,7 @@ void zkidp_free(ZKIdentityProof *zkp) {
 void vc_create(VerifiableCredential *vc, const char *subject,
                const char **claims, const char **values, int num_claims) {
     if (!vc || !subject) return;
+    (void)claims;
     memset(vc, 0, sizeof(VerifiableCredential));
     vc->vc_json = (uint8_t *)calloc(2048, 1);
     vc->vc_len  = 2048;

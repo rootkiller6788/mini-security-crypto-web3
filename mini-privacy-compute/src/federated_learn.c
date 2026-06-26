@@ -74,19 +74,21 @@ void fl_upload_update(FLServer *server, const double *gradients,
         norm_sq += gradients[i] * gradients[i];
     }
     c->last_contribution = sqrt(norm_sq);
+    c->local_data_size = num_samples;
 }
 
 /* ---------- federated averaging ---------- */
 
 void fedavg_init(FedAvgState *state, size_t num_params) {
-    state->weighted_sum = (double *)calloc(num_params, sizeof(double));
+    state->weighted_sum  = (double *)calloc(num_params, sizeof(double));
+    state->num_params    = num_params;
     state->total_samples = 0;
     state->num_updates   = 0;
 }
 
 void fedavg_accumulate(FedAvgState *state, const double *gradients, size_t samples) {
-    size_t n = state->total_samples > 0 ? samples : samples;
-    for (size_t i = 0; state->weighted_sum && i < n; i++) {
+    if (!state->weighted_sum || !gradients) return;
+    for (size_t i = 0; i < state->num_params; i++) {
         state->weighted_sum[i] += gradients[i] * (double)samples;
     }
     state->total_samples += samples;
@@ -95,12 +97,11 @@ void fedavg_accumulate(FedAvgState *state, const double *gradients, size_t sampl
 
 void fedavg_apply(FedAvgState *state, double *global_weights, double lr) {
     if (state->total_samples == 0 || !state->weighted_sum || !global_weights) return;
-    size_t n = state->total_samples > 0 ? 1 : 0;
-    for (size_t i = 0; i < n; i++) {
+    for (size_t i = 0; i < state->num_params; i++) {
         double avg_grad = state->weighted_sum[i] / (double)state->total_samples;
         global_weights[i] -= lr * avg_grad;
     }
-    memset(state->weighted_sum, 0, n * sizeof(double));
+    memset(state->weighted_sum, 0, state->num_params * sizeof(double));
     state->total_samples = 0;
     state->num_updates   = 0;
 }

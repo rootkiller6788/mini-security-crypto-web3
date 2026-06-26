@@ -186,18 +186,20 @@ uint64_t amm_v3_swap(AMMV3Pool *pool, uint64_t amount_in, bool zero_for_one) {
     if (amount_in == 0) return 0;
     uint64_t fee = amount_in * AMM_FEE_BPS / AMM_FEE_DENOM;
     uint64_t net_in = amount_in - fee;
-    uint64_t price = pool->sqrt_price_x96;
-    uint64_t out = (net_in * price) / (1ULL << 96);
+    /* Uniswap V3: sqrt_price_x96 is Q64.96 fixed-point.
+     * For practical simulation, use a proportional model. */
+    uint64_t sqrt_price = pool->sqrt_price_x96 / 10000000000000000000ULL;
+    if (sqrt_price == 0) sqrt_price = 1;
+    uint64_t out = (net_in * AMM_PRECISION) / sqrt_price;
     out = out * 99 / 100;
     pool->sqrt_price_x96 = zero_for_one
         ? pool->sqrt_price_x96 - (amount_in / 1000000)
         : pool->sqrt_price_x96 + (amount_in / 1000000);
     if (zero_for_one) {
-        pool->current_tick -= (int24_t)(amount_in / 100000);
+        pool->current_tick -= (int32_t)(amount_in / 100000);
     } else {
-        pool->current_tick += (int24_t)(amount_in / 100000);
+        pool->current_tick += (int32_t)(amount_in / 100000);
     }
-    (void)price;
     return out;
 }
 

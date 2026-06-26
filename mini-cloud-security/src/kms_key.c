@@ -47,12 +47,15 @@ kms_key_t* kms_create_key(const char *description, kms_key_spec_t spec,
                             kms_key_usage_t usage, kms_origin_t origin,
                             unsigned char multi_region, unsigned char hsm) {
     return kms_create_key_with_policy(description, spec, usage, origin,
-                                       "{\"Version\":\"2012-10-17\",\"Statement\":[]}");
+                                       "{\"Version\":\"2012-10-17\",\"Statement\":[]}",
+                                       multi_region, hsm);
 }
 
 kms_key_t* kms_create_key_with_policy(const char *desc, kms_key_spec_t spec,
                                        kms_key_usage_t usage, kms_origin_t origin,
-                                       const char *policy_json) {
+                                       const char *policy_json,
+                                       unsigned char multi_region,
+                                       unsigned char hsm) {
     if (g_kms_state.key_count >= KMS_MAX_KEYS) return NULL;
     kms_key_t *k = &g_kms_state.keys[g_kms_state.key_count++];
     memset(k, 0, sizeof(kms_key_t));
@@ -66,7 +69,7 @@ kms_key_t* kms_create_key_with_policy(const char *desc, kms_key_spec_t spec,
     k->multi_region = multi_region;
     strncpy(k->primary_region, "us-east-1", 31);
     k->creation_date = time(NULL);
-    if (policy_json) { strncpy(k->policy_json, policy_json, 8191); }
+    if (policy_json) { strncpy(k->policy_json, policy_json, 2047); }
     if (spec == KMS_KEY_SPEC_SYMMETRIC_DEFAULT) {
         generate_random(k->key_material, KMS_AES_KEY_SIZE);
     }

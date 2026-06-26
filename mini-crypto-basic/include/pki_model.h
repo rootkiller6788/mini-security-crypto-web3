@@ -153,4 +153,113 @@ bool ocsp_staple_verify(const uint8_t *stapled_data, size_t data_len,
                          const X509Certificate *responder_cert,
                          uint64_t current_time);
 
+/* ─── Key Lifecycle Management ───────────────────────────────── */
+
+typedef enum KeyState {
+    KEY_STATE_PRE_ACTIVE,
+    KEY_STATE_ACTIVE,
+    KEY_STATE_DEACTIVATED,
+    KEY_STATE_COMPROMISED,
+    KEY_STATE_DESTROYED,
+    KEY_STATE_ARCHIVED
+} KeyState;
+
+typedef enum KeyAlgorithm {
+    KEY_ALGO_RSA_2048,
+    KEY_ALGO_RSA_4096,
+    KEY_ALGO_EC_P256,
+    KEY_ALGO_EC_P384
+} KeyAlgorithm;
+
+typedef struct KeyMetadata {
+    char        key_id[64];
+    KeyAlgorithm algo;
+    KeyState    state;
+    uint64_t    created_at;
+    uint64_t    activated_at;
+    uint64_t    deactivated_at;
+    uint64_t    expires_at;
+    uint64_t    destroyed_at;
+    uint32_t    usage_count;
+    bool        exportable;
+} KeyMetadata;
+
+typedef struct ManagedKey {
+    KeyMetadata  meta;
+    uint8_t      key_data[4096];
+    size_t       key_data_len;
+    X509Certificate cert;
+    bool         has_cert;
+} ManagedKey;
+
+void key_lifecycle_init(ManagedKey *mk, KeyAlgorithm algo, const char *key_id);
+bool key_lifecycle_activate(ManagedKey *mk, uint64_t validity_days);
+bool key_lifecycle_deactivate(ManagedKey *mk);
+bool key_lifecycle_revoke_compromised(ManagedKey *mk);
+bool key_lifecycle_destroy(ManagedKey *mk);
+bool key_lifecycle_archive(ManagedKey *mk);
+bool key_lifecycle_is_usable(const ManagedKey *mk, uint64_t now);
+
+/* ─── Certificate Renewal Policy ─────────────────────────────── */
+
+typedef enum RenewalStrategy {
+    RENEWAL_FIXED_WINDOW,
+    RENEWAL_PERCENTAGE_LIFETIME,
+    RENEWAL_KEY_CHANGE,
+    RENEWAL_MANUAL_ONLY
+} RenewalStrategy;
+
+typedef struct RenewalPolicy {
+    RenewalStrategy strategy;
+    uint64_t         renewal_window_secs;
+    double           renewal_pct_lifetime;
+    bool             require_new_key;
+    uint32_t         max_auto_renewals;
+    uint32_t         renewal_count;
+    uint64_t         last_renewal_time;
+} RenewalPolicy;
+
+void renewal_policy_init(RenewalPolicy *policy, RenewalStrategy strategy);
+bool renewal_policy_should_renew(const RenewalPolicy *policy,
+                                  const X509Certificate *cert,
+                                  uint64_t now);
+bool renewal_policy_record_renewal(RenewalPolicy *policy);
+
+/* ─── PKI Event Audit Log ─────────────────────────────────────── */
+
+#define PKI_AUDIT_MAX_EVENTS 128
+
+typedef enum PkiEventType {
+    PKI_EVENT_KEY_GEN,
+    PKI_EVENT_KEY_ACTIVATE,
+    PKI_EVENT_KEY_DEACTIVATE,
+    PKI_EVENT_KEY_COMPROMISE,
+    PKI_EVENT_KEY_DESTROY,
+    PKI_EVENT_CERT_ISSUE,
+    PKI_EVENT_CERT_REVOKE,
+    PKI_EVENT_CERT_RENEW,
+    PKI_EVENT_CSR_RECEIVED,
+    PKI_EVENT_OCSP_QUERY,
+    PKI_EVENT_ACME_ORDER
+} PkiEventType;
+
+typedef struct PkiAuditEntry {
+    uint64_t      timestamp;
+    PkiEventType  event_type;
+    char          description[256];
+    uint8_t       fingerprint[32];
+} PkiAuditEntry;
+
+typedef struct PkiAuditLog {
+    PkiAuditEntry entries[PKI_AUDIT_MAX_EVENTS];
+    size_t        count;
+} PkiAuditLog;
+
+void pki_audit_init(PkiAuditLog *log);
+void pki_audit_record(PkiAuditLog *log, PkiEventType type,
+                      const char *desc, const uint8_t *fp);
+const PkiAuditEntry *pki_audit_query(const PkiAuditLog *log,
+                                      PkiEventType type, size_t *count);
+void pki_audit_dump(const PkiAuditLog *log);
+
 #endif /* PKI_MODEL_H */

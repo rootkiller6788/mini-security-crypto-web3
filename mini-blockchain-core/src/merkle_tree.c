@@ -72,31 +72,43 @@ int merkle_tree_add_leaf(merkle_tree *tree, const uint8_t *data, size_t len) {
     if (!tree || !data || len == 0) return -1;
     merkle_node *leaf = merkle_node_create(data, len, 1);
     if (!leaf) return -1;
-    merkle_node **slot = &tree->root;
-    if (!*slot) {
-        *slot = leaf;
+
+    if (!tree->root) {
+        tree->root = leaf;
         tree->leaf_count = 1;
         return 0;
     }
-    merkle_node *current = *slot;
-    while (current && !current->is_leaf) {
-        if (!current->left) { current->left = leaf; leaf->parent = current; break; }
-        if (!current->right) { current->right = leaf; leaf->parent = current; break; }
-        current = current->left;
+
+    /* BFS over all nodes to find the first free child slot.
+       Leaf nodes are included in BFS so we can attach children
+       to them; the subsequent rebuild restructures everything
+       into a proper Merkle tree. */
+    merkle_node *queue[2048];
+    int head = 0, tail = 0;
+    queue[tail++] = tree->root;
+    int attached = 0;
+
+    while (head < tail) {
+        merkle_node *cur = queue[head++];
+        if (!cur->left) {
+            cur->left = leaf; leaf->parent = cur;
+            attached = 1; break;
+        }
+        if (!cur->right) {
+            cur->right = leaf; leaf->parent = cur;
+            attached = 1; break;
+        }
+        if (cur->left)  queue[tail++] = cur->left;
+        if (cur->right) queue[tail++] = cur->right;
     }
-    if (current == tree->root && current->is_leaf) {
-        merkle_node *parent = calloc(1, sizeof(merkle_node));
-        if (!parent) { merkle_node_free_recursive(leaf); return -1; }
-        parent->left = current; current->parent = parent;
-        parent->right = leaf; leaf->parent = parent;
-        tree->root = parent;
-        merkle_node_compute_hash(parent);
+
+    if (!attached) {
+        merkle_node_free_recursive(leaf);
+        return -1;
     }
+
     tree->leaf_count++;
-    if (tree->leaf_count > 2) {
-        merkle_tree_rebuild(tree);
-    }
-    return 0;
+    return merkle_tree_rebuild(tree);
 }
 
 int merkle_tree_add_leaves(merkle_tree *tree, const uint8_t **data, const size_t *lens, size_t count) {
@@ -150,6 +162,12 @@ int merkle_tree_rebuild(merkle_tree *tree) {
             }
             cur = cur->right;
         }
+    }
+    /* Clear stale child pointers to prevent double-free */
+    for (size_t i = 0; i < idx; i++) {
+        leaves[i]->left = NULL;
+        leaves[i]->right = NULL;
+        leaves[i]->parent = NULL;
     }
     merkle_node *new_root = merkle_node_build_tree(leaves, tree->leaf_count);
     free(leaves);

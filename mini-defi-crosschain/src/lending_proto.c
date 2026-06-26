@@ -64,7 +64,6 @@ uint64_t lending_deposit(LendingAccount *account, LendingMarket *market,
     uint64_t ctokens = (amount * LENDING_KINK_PRECISION) / rate;
 
     account->ctoken_balance += ctokens;
-    account->principal += amount;
     account->interest_index = market->supply_index;
     market->total_deposits += amount;
 
@@ -138,7 +137,7 @@ void lending_accrue_interest(LendingMarket *market, uint64_t current_time) {
 
     uint64_t reserve_growth = (new_borrow_index - market->borrow_index)
         * market->total_borrows * market->reserve_factor_bps
-        / (LENDING_BPS_DENOM * LENDING_KINK_PRECISION);
+        / ((uint64_t)LENDING_BPS_DENOM * (uint64_t)LENDING_KINK_PRECISION);
 
     market->total_reserves += reserve_growth;
     market->borrow_index = new_borrow_index;

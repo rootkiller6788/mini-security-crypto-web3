@@ -1,4 +1,4 @@
-.PHONY: all lib examples demos clean run
+.PHONY: all lib examples demos test clean run
 
 CC       ?= gcc
 CFLAGS   ?= -std=c99 -Wall -Wextra -O2 -g
@@ -8,6 +8,7 @@ OBJDIR   := build
 LIBDIR   := lib
 EXAMPLEDIR := examples
 DEMODIR    := demos
+TESTDIR    := tests
 
 INC      := -I$(INCDIR)
 LDFLAGS  :=
@@ -22,6 +23,9 @@ EXAMPLE_BINS := $(patsubst $(EXAMPLEDIR)/%.c,$(EXAMPLEDIR)/%.exe,$(EXAMPLES))
 DEMOS    := $(wildcard $(DEMODIR)/*.c)
 DEMO_BINS   := $(patsubst $(DEMODIR)/%.c,$(DEMODIR)/%.exe,$(DEMOS))
 
+TESTS    := $(wildcard $(TESTDIR)/*.c)
+TEST_BINS   := $(patsubst $(TESTDIR)/%.c,$(TESTDIR)/%.exe,$(TESTS))
+
 LIBNAME  := libbinarysecurity.a
 LIBFILE  := $(LIBDIR)/$(LIBNAME)
 
@@ -32,15 +36,13 @@ lib: $(LIBFILE)
 	@echo [LIB] Library built: $(LIBFILE)
 
 $(OBJDIR):
-	@if not exist "$(OBJDIR)" mkdir "$(OBJDIR)"
-
-$(LIBDIR):
-	@if not exist "$(LIBDIR)" mkdir "$(LIBDIR)"
+	@mkdir -p "$(OBJDIR)"
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c $(HEADERS) | $(OBJDIR)
 	$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
-$(LIBFILE): $(OBJECTS) | $(LIBDIR)
+$(LIBFILE): $(OBJECTS)
+	@mkdir -p $(LIBDIR)
 	ar rcs $@ $^
 	@echo [AR] $@
 
@@ -57,15 +59,21 @@ $(DEMODIR)/%.exe: $(DEMODIR)/%.c $(LIBFILE) $(HEADERS)
 	$(CC) $(CFLAGS) $(INC) -o $@ $< -L$(LIBDIR) -lbinarysecurity $(LDFLAGS)
 
 run: all
-	@echo.
-	@echo === Running Examples ===
-	@for %%f in ($(EXAMPLE_BINS)) do @echo --- %%~nxf --- && "%%f" && echo.
-	@echo === Running Demos ===
-	@for %%f in ($(DEMO_BINS)) do @echo --- %%~nxf --- && "%%f" && echo.
+	@echo ""
+	@echo "=== Running Examples ==="
+	@for f in $(EXAMPLE_BINS); do echo "--- $$f ---" && "$$f" && echo ""; done
+	@echo "=== Running Demos ==="
+	@for f in $(DEMO_BINS); do echo "--- $$f ---" && "$$f" && echo ""; done
 
 clean:
-	@if exist "$(OBJDIR)" rmdir /s /q "$(OBJDIR)"
-	@if exist "$(LIBDIR)" rmdir /s /q "$(LIBDIR)"
-	@for %%f in ($(EXAMPLE_BINS)) do @if exist "%%f" del /q "%%f"
-	@for %%f in ($(DEMO_BINS)) do @if exist "%%f" del /q "%%f"
+	@rm -rf "$(OBJDIR)" "$(LIBDIR)"
+	@rm -f $(EXAMPLE_BINS) $(DEMO_BINS) $(TEST_BINS)
 	@echo [CLEAN] Done.
+
+test: lib $(TEST_BINS)
+	@echo "[TEST] Running tests..."
+	@for f in $(TEST_BINS); do echo "--- $$f ---" && "$$f" && echo ""; done
+	@echo "[TEST] All tests complete."
+
+$(TESTDIR)/%.exe: $(TESTDIR)/%.c $(LIBFILE) $(HEADERS)
+	$(CC) $(CFLAGS) $(INC) -o $@ $< -L$(LIBDIR) -lbinarysecurity $(LDFLAGS)

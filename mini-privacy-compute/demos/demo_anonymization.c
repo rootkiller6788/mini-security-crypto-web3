@@ -323,6 +323,7 @@ int main(void) {
 
         /* Simulate adding DP noise reduces uniqueness */
         uint64_t seed = 1111ULL;
+        (void)seed;
         double epsilon = 0.5;
         double noise_scale = 1.0 / epsilon;
         printf("Applying Laplace noise (eps=%.2f, scale=%.2f)...\n",

@@ -206,6 +206,7 @@ int pq_dilithium_keygen(pq_dilithium_pk_t *pk, pq_dilithium_sk_t *sk) {
 int pq_dilithium_sign(pq_dilithium_sig_t *sig, uint32_t *siglen,
                       const uint8_t *msg, uint32_t msglen,
                       const pq_dilithium_sk_t *sk) {
+    (void)sk;
     memset(sig, 0, sizeof(*sig));
     uint8_t hash = 0;
     for (uint32_t i = 0; i < msglen; i++) hash ^= msg[i];

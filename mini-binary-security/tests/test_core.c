@@ -122,16 +122,21 @@ static int test_fmt_parse(void) {
     fmt_parse("%d %s %n", &result);
     CHECK(result.count == 3, "parse count wrong");
     CHECK(result.has_n_write, "should detect %n");
-    CHECK(!result.has_leak, "no leak format");
+    CHECK(result.has_leak, "%d and %s leak stack data");
     PASS();
     return 0;
 }
 
 static int test_fmt_payload_has_null(void) {
     TEST("fmt_payload_has_null");
-    char payload[] = "AAAA\x00BBBB";
+    char payload[64] = { 'A','A','A','A', '\0' };
+    /* Fill the rest with non-null to avoid reading past buffer */
+    for (int i = 5; i < 64; i++) payload[i] = 'X';
     CHECK(fmt_payload_has_null(payload), "null byte not detected");
-    CHECK(!fmt_payload_has_null("no null bytes here"), "false null positive");
+
+    char no_null[64];
+    memset(no_null, 'A', 64);
+    CHECK(!fmt_payload_has_null(no_null), "false null positive");
     PASS();
     return 0;
 }

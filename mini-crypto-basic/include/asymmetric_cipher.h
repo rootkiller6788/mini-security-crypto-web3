@@ -33,6 +33,41 @@ bool bigint_is_one(const BigInt *a);
 bool bigint_is_even(const BigInt *a);
 size_t bigint_bit_length(const BigInt *a);
 
+/* ─── Primality Testing (Miller-Rabin) ────────────────────────── */
+
+#define MR_DEFAULT_ROUNDS 40
+
+bool miller_rabin_test(const BigInt *n, int k);
+
+/* ─── PKCS#1 v1.5 Padding ─────────────────────────────────────── */
+
+#define PKCS1_MAX_MSG_LEN 256
+
+size_t pkcs1_v15_encode(const uint8_t *msg, size_t msg_len,
+                        uint8_t *em, size_t em_len);
+bool pkcs1_v15_decode(const uint8_t *em, size_t em_len,
+                      uint8_t *msg, size_t *msg_len);
+
+/* ─── Diffie-Hellman Key Exchange ─────────────────────────────── */
+
+typedef struct DhParams {
+    BigInt p;  /* prime modulus */
+    BigInt g;  /* generator */
+    size_t bits;
+} DhParams;
+
+typedef struct DhKeyPair {
+    BigInt private_key;
+    BigInt public_key;
+    const DhParams *params;
+} DhKeyPair;
+
+void dh_params_init_2048(DhParams *params);
+bool dh_generate_keypair(DhKeyPair *kp, const DhParams *params);
+bool dh_compute_shared_secret(BigInt *secret,
+                              const DhKeyPair *my_key,
+                              const BigInt *their_public);
+
 /* ─── RSA ────────────────────────────────────────────────────── */
 
 #define RSA_MIN_KEY_BITS 1024

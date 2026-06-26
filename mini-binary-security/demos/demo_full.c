@@ -35,10 +35,9 @@ int main(void) {
     ovf = int_ovf_check_mul_size(65536, 65536);
     printf("Size_t overflow (64K*64K): %s\n", ovf ? "OVERFLOW DETECTED" : "OK");
 
-    stack_canary_t canary;
-    stack_canary_init(&canary);
-    bool canary_ok = stack_canary_check(&canary);
-    printf("Stack canary: value=0x%08X, check=%s\n", canary.value, canary_ok ? "OK" : "BREACHED");
+    int_ovf_result_t ovf_r = int_ovf_analyze(INT64_MAX, 1, '+');
+    printf("int_ovf_analyze(INT64_MAX, 1, '+'): type=%d sign=%d result=%lld\n",
+           ovf_r.type, ovf_r.sign, (long long)ovf_r.result);
 
     uaf_tracker_t uaf;
     uaf_tracker_init(&uaf);
@@ -48,60 +47,79 @@ int main(void) {
     bool dangling = uaf_tracker_is_dangling(&uaf, ptr);
     printf("UAF tracker: ptr=%p, dangling=%s\n", ptr, dangling ? "YES (UAF bug!)" : "NO");
 
+    df_tracker_t df;
+    df_tracker_init(&df);
+    df_tracker_check(&df, ptr);
+    bool double_free = df_tracker_check(&df, ptr);
+    printf("Double-free check: %s\n", double_free ? "DOUBLE FREE DETECTED!" : "first free ok");
+
     /* Step 2: ROP Gadget Analysis */
     printf("\n── Step 2: ROP Gadget Analysis ──\n");
     rop_gadget_t gadget1;
     memset(&gadget1, 0, sizeof(gadget1));
     gadget1.address = 0x401000;
-    gadget1.bytes[0] = 0x5d; gadget1.bytes[1] = 0xc3; /* pop rbp; ret */
+    gadget1.bytes[0] = 0x5f; gadget1.bytes[1] = 0xc3; /* pop rdi; ret */
     gadget1.num_bytes = 2;
     rop_gadget_classify(&gadget1);
-    printf("Gadget @ 0x%llX: type=%d, \"pop rbp; ret\"\n", (unsigned long long)gadget1.address, gadget1.type);
+    printf("Gadget @ 0x%llX: class=%d, \"%s\"\n",
+           (unsigned long long)gadget1.address, gadget1.class, gadget1.mnemonic);
 
     rop_gadget_t gadget2;
     memset(&gadget2, 0, sizeof(gadget2));
     gadget2.address = 0x402000;
-    gadget2.bytes[0] = 0x58; gadget2.bytes[1] = 0x5f; gadget2.bytes[2] = 0xc3; /* pop rax; pop rdi; ret */
-    gadget2.num_bytes = 3;
+    gadget2.bytes[0] = 0x5e; gadget2.bytes[1] = 0xc3; /* pop rsi; ret */
+    gadget2.num_bytes = 2;
     rop_gadget_classify(&gadget2);
-    printf("Gadget @ 0x%llX: type=%d, \"pop rax; pop rdi; ret\"\n", (unsigned long long)gadget2.address, gadget2.type);
+    printf("Gadget @ 0x%llX: class=%d, \"%s\"\n",
+           (unsigned long long)gadget2.address, gadget2.class, gadget2.mnemonic);
 
     rop_chain_t chain;
     rop_chain_init(&chain);
-    rop_chain_add_gadget(&chain, &gadget1);
-    rop_chain_add_gadget(&chain, &gadget2);
-    printf("ROP chain: %d gadgets\n", chain.count);
-    printf("Chain execution: pop rbp -> ret -> pop rax -> pop rdi -> ret\n");
+    rop_chain_append(&chain, &gadget1, 0x7FFF0000, "pop rdi -> arg");
+    rop_chain_append(&chain, &gadget2, 0x0, "pop rsi -> NULL");
+    printf("ROP chain: %u gadgets\n", chain.count);
+    rop_chain_print(&chain);
 
     /* Step 3: Mitigation Detection */
     printf("\n── Step 3: Exploit Mitigation Detection ──\n");
     security_profile_t profile = mitigation_detect();
-    printf("ASLR:      %s\n", profile.has_aslr ? "ENABLED" : "DISABLED");
-    printf("NX/DEP:    %s\n", profile.has_nx ? "ENABLED" : "DISABLED");
-    printf("Canary:    %s\n", profile.has_canary ? "ENABLED" : "DISABLED");
-    printf("RELRO:     %s\n", profile.has_relro ? "FULL" : "PARTIAL/NONE");
-    printf("PIE:       %s\n", profile.has_pie ? "ENABLED" : "DISABLED");
-    printf("CFI:       %s\n", profile.has_cfi ? "ENABLED" : "DISABLED");
-    printf("ShadowStack: %s\n", profile.has_shadow_stack ? "ENABLED" : "DISABLED");
+    printf("ASLR:      %s\n", (profile.flags & MITIG_ASLR) ? "ENABLED" : "DISABLED");
+    printf("NX/DEP:    %s\n", (profile.flags & MITIG_NX) ? "ENABLED" : "DISABLED");
+    printf("Canary:    %s\n", (profile.flags & MITIG_CANARY) ? "ENABLED" : "DISABLED");
+    printf("RELRO:     %s\n", (profile.flags & MITIG_FULL_RELRO) ? "FULL" :
+                            (profile.flags & MITIG_RELRO) ? "PARTIAL" : "NONE");
+    printf("PIE:       %s\n", (profile.flags & MITIG_PIE) ? "ENABLED" : "DISABLED");
+    printf("CFI:       %s\n", (profile.flags & MITIG_CFI) ? "ENABLED" : "DISABLED");
+    printf("CET:       %s\n", (profile.flags & (MITIG_CET_IBT|MITIG_CET_SS)) ? "ENABLED" : "DISABLED");
 
-    mitigation_assess_level(&profile);
-    int score = mitigation_score(&profile);
-    printf("Security score: %d/100\n", score);
+    uint32_t score = mitigation_score(&profile);
+    printf("Security score: %u\n", score);
+    printf("Security level: %s\n", security_level_name(profile.level));
+
+    bypass_difficulty_t rop_diff = mitigation_bypass_difficulty(&profile, "rop");
+    printf("ROP bypass difficulty: %s\n", bypass_difficulty_name(rop_diff));
+
+    mitigation_suggest(&profile);
 
     /* Step 4: Format String Attack */
     printf("\n── Step 4: Format String Attack Analysis ──\n");
     fmt_parse_result_t fmt_r;
     fmt_parse("%d %s %n %x %p %08x", &fmt_r);
     printf("Format string: \"%%d %%s %%n %%x %%p %%08x\"\n");
-    printf("  Specifiers found: %d\n", fmt_r.specifier_count);
+    printf("  Specifiers found: %d\n", fmt_r.count);
     printf("  Has %%n (write): %s [%s]\n",
-           fmt_r.has_n_specifier ? "YES" : "NO",
-           fmt_r.has_n_specifier ? "DANGEROUS" : "SAFE");
-    printf("  Has %%s (read): %s\n", fmt_r.has_s_specifier ? "YES" : "NO");
-    printf("  Has positional: %s\n", fmt_r.has_positional ? "YES" : "NO");
+           fmt_r.has_n_write ? "YES" : "NO",
+           fmt_r.has_n_write ? "DANGEROUS" : "SAFE");
+    printf("  Has leak (%%p/%%x): %s\n", fmt_r.has_leak ? "YES" : "NO");
 
-    bool vuln = fmt_is_vulnerable("%s%s%s%s%s%s%s%s%s%s");
-    printf("Vulnerable format (10x %%s): %s\n", vuln ? "YES (info leak)" : "NO");
+    fmt_payload_t leak_payload = fmt_build_leak_payload(7);
+    printf("Leak payload (%zu bytes): %s\n", leak_payload.len, leak_payload.payload);
+
+    fmt_payload_t stack_leak = fmt_build_stack_leak(1, 4);
+    printf("Stack leak payload: %s\n", stack_leak.payload);
+
+    bool has_null = fmt_payload_has_null(stack_leak.payload);
+    printf("Payload has null byte: %s\n", has_null ? "YES (may terminate string)" : "NO");
 
     /* Step 5: Fuzzing */
     printf("\n── Step 5: Coverage-Guided Fuzzing ──\n");
@@ -116,7 +134,7 @@ int main(void) {
     fuzzer_add_seed(&fs, seed2, sizeof(seed2) - 1, "seed-BBBB");
     fuzzer_add_seed(&fs, seed3, sizeof(seed3) - 1, "seed-CRAS");
 
-    printf("Fuzzer initialized with 3 seeds\n");
+    printf("Fuzzer initialized with %u seeds\n", fs.corpus.count);
     for (int round = 0; round < 10; round++) {
         fuzz_mutate_bitflip(&fs, 1);
         exec_result_t res = fuzz_execute(&fs);
@@ -125,8 +143,8 @@ int main(void) {
             break;
         }
     }
-    printf("Fuzzing stats: %zu iterations, %zu unique paths, %zu crashes\n",
-           fs.total_iterations, fs.unique_paths, fs.crash_count);
+    fuzz_stats_update(&fs.stats, fs.stats.total_execs);
+    fuzz_stats_print(&fs.stats);
 
     fuzzer_free(&fs);
 

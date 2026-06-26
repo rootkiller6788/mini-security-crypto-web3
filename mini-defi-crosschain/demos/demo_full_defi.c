@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static uint32_t demo_rand_seed = 0xFULLDEF1;
+static uint32_t demo_rand_seed = 0xF011DEF1;
 
 static uint32_t demo_rand(void) {
     demo_rand_seed = demo_rand_seed * 1103515245 + 12345;

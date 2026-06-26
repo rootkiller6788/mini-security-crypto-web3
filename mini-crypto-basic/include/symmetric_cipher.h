@@ -105,6 +105,49 @@ void ctr_crypt_init(CtrContext *ctr, void *cipher_ctx, CipherAlgo algo,
 void ctr_crypt_update(CtrContext *ctr, const uint8_t *in, size_t len,
                       uint8_t *out, size_t *out_len);
 
+/* ─── GCM (Galois/Counter Mode) Authenticated Encryption ─────── */
+/* NIST SP 800-38D */
+
+#define GCM_BLOCK_SIZE  16
+#define GCM_TAG_SIZE    16
+#define GCM_IV_MAX      12
+#define GCM_AAD_MAX     256
+
+typedef struct GcmContext {
+    void      *cipher_ctx;
+    CipherAlgo algo;
+    uint8_t    hash_key[GCM_BLOCK_SIZE];
+    uint8_t    j0[GCM_BLOCK_SIZE];
+    uint8_t    counter[GCM_BLOCK_SIZE];
+    uint8_t    keystream[GCM_BLOCK_SIZE];
+    size_t     stream_pos;
+    /* GHASH state */
+    uint8_t    ghash_state[GCM_BLOCK_SIZE];
+    uint64_t   aad_len_bits;
+    uint64_t   data_len_bits;
+} GcmContext;
+
+void gcm_encrypt_init(GcmContext *gcm, void *cipher_ctx, CipherAlgo algo,
+                      const uint8_t *key, size_t key_len,
+                      const uint8_t *iv, size_t iv_len);
+void gcm_encrypt_aad(GcmContext *gcm, const uint8_t *aad, size_t aad_len);
+void gcm_encrypt_update(GcmContext *gcm, const uint8_t *plain, size_t plain_len,
+                        uint8_t *cipher, size_t *out_len);
+void gcm_encrypt_final(GcmContext *gcm, uint8_t *tag, size_t tag_len);
+
+void gcm_decrypt_init(GcmContext *gcm, void *cipher_ctx, CipherAlgo algo,
+                      const uint8_t *key, size_t key_len,
+                      const uint8_t *iv, size_t iv_len);
+void gcm_decrypt_aad(GcmContext *gcm, const uint8_t *aad, size_t aad_len);
+bool gcm_decrypt_update(GcmContext *gcm, const uint8_t *cipher, size_t cipher_len,
+                        uint8_t *plain, size_t *out_len);
+bool gcm_decrypt_final(GcmContext *gcm, const uint8_t *expected_tag, size_t tag_len);
+
+/* GHASH / GF(2^128) multiplication primitives */
+void gcm_gf_mul(uint8_t *r, const uint8_t *a, const uint8_t *b);
+void gcm_ghash(const uint8_t *hash_key, const uint8_t *data, size_t data_len,
+               uint8_t *out);
+
 /* ─── PKCS#7 Padding ─────────────────────────────────────────── */
 
 #define PKCS7_MAX_PAD 16

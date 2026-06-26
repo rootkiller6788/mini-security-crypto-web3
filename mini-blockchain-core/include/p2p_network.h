@@ -9,17 +9,25 @@ extern "C" {
 #endif
 
 #ifdef _WIN32
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
 #include <winsock2.h>
+#include <ws2tcpip.h>
 typedef SOCKET p2p_socket;
 #define P2P_INVALID_SOCKET INVALID_SOCKET
 #define P2P_SOCKET_ERROR   SOCKET_ERROR
+#define p2p_socklen_t int
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
 typedef int p2p_socket;
 #define P2P_INVALID_SOCKET (-1)
 #define P2P_SOCKET_ERROR   (-1)
+#define p2p_socklen_t socklen_t
 #endif
 
 #define P2P_MAX_PEERS            125

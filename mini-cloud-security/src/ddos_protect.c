@@ -269,7 +269,7 @@ void ddos_update_mitigation(ddos_protection_t *dp) {
     ddos_attack_type_t detected = ddos_detect_anomaly(dp);
     if (detected != DDOS_UNKNOWN && !dp->attack_start) {
         dp->attack_start = now;
-        dp->mitigation_start = now;
+        dp->target.mitigation_start = now;
         printf("[DDoS ALERT] %s attack detected! Activating countermeasures.\n",
                ddos_attack_type_name(detected));
     } else if (detected == DDOS_UNKNOWN && dp->attack_start) {
@@ -309,7 +309,7 @@ int ddos_scrub_traffic(ddos_protection_t *dp, const char *source_ip) {
     return 0;
 }
 
-float ddos_calculate_entropy(ddos_protection_t *dp) {
+float ddos_calculate_entropy(const ddos_protection_t *dp) {
     if (!dp || dp->source_count == 0) return 0.0f;
     float entropy = 0.0f;
     for (int i = 0; i < dp->source_count; i++) {

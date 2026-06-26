@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <stdio.h>
 
 /* ---------- secret sharing ---------- */
 
@@ -94,26 +95,46 @@ void bt_multiply(const SecretSharing *ss, const BeaverTriple *triple,
                  const uint64_t *x_shares, const uint64_t *y_shares,
                  uint64_t *prod_shares) {
     if (!ss || !triple || !x_shares || !y_shares || !prod_shares) return;
-    uint64_t *d = (uint64_t *)malloc(ss->num_parties * sizeof(uint64_t));
-    uint64_t *e = (uint64_t *)malloc(ss->num_parties * sizeof(uint64_t));
-    if (!d || !e) { free(d); free(e); return; }
+    /*
+     * Beaver multiplication: (x*y) = (x-a + a)*(y-b + b)
+     *   = c + (x-a)*b + (y-b)*a + (x-a)*(y-b)
+     * where c = a*b (the triple).
+     * All parties know full a, b, c (simplified single-process demo).
+     * d = x - a mod p, e = y - b mod p (opened values).
+     * Each party computes: [z] = c/n + d*b/n + e*a/n + (party 0 adds d*e)
+     * Using modular inverse for division: /n ≡ *inv(n) mod p.
+     */
+    uint64_t n_inv = mpc_mod_inv(ss->num_parties, ss->prime);
+    if (n_inv == 0) return; /* num_parties divides prime (impossible for reasonable n) */
+
+    uint64_t a_n = (triple->a_share * n_inv) % ss->prime;
+    uint64_t b_n = (triple->b_share * n_inv) % ss->prime;
+    uint64_t c_n = (triple->c_share * n_inv) % ss->prime;
+
+    uint64_t *d_share = (uint64_t *)malloc(ss->num_parties * sizeof(uint64_t));
+    uint64_t *e_share = (uint64_t *)malloc(ss->num_parties * sizeof(uint64_t));
+    if (!d_share || !e_share) { free(d_share); free(e_share); return; }
+
     for (size_t i = 0; i < ss->num_parties; i++) {
-        d[i] = (x_shares[i] + ss->prime - triple->a_share / ss->num_parties) % ss->prime;
-        e[i] = (y_shares[i] + ss->prime - triple->b_share / ss->num_parties) % ss->prime;
+        d_share[i] = (x_shares[i] + ss->prime - a_n) % ss->prime;
+        e_share[i] = (y_shares[i] + ss->prime - b_n) % ss->prime;
     }
-    uint64_t d_val = 0, e_val = 0;
+    /* Open d and e (sum all shares mod p) */
+    uint64_t d_open = 0, e_open = 0;
     for (size_t i = 0; i < ss->num_parties; i++) {
-        d_val = (d_val + d[i]) % ss->prime;
-        e_val = (e_val + e[i]) % ss->prime;
+        d_open = (d_open + d_share[i]) % ss->prime;
+        e_open = (e_open + e_share[i]) % ss->prime;
     }
+    /* Each party computes output share */
     for (size_t i = 0; i < ss->num_parties; i++) {
-        uint64_t term = (triple->c_share / ss->num_parties +
-                        d_val * (triple->b_share / ss->num_parties) +
-                        e_val * (triple->a_share / ss->num_parties)) % ss->prime;
-        if (i == 0) term = (term + d_val * e_val) % ss->prime;
+        uint64_t term = (c_n + d_open * b_n % ss->prime + e_open * a_n % ss->prime) % ss->prime;
+        if (i == 0) {
+            term = (term + d_open * e_open % ss->prime) % ss->prime;
+        }
         prod_shares[i] = term;
     }
-    free(d); free(e);
+    free(d_share);
+    free(e_share);
 }
 
 void bt_pool_free(BeaverTriplePool *pool) {
@@ -175,6 +196,14 @@ void spdz_free(SPDZState *state) {
 }
 
 /* ---------- garbled circuit ---------- */
+/*
+ * Yao's Garbled Circuit: gate_defs store the circuit topology (immutable).
+ * garble_table stores encrypted truth table rows indexed by label bits.
+ * Each wire has two 4-byte labels (0-label, 1-label).
+ * Evaluation: given input labels, decrypt one row per gate to get output label.
+ */
+
+#define GC_LABEL_BYTES 4
 
 void gc_init(GarbledCircuit *gc, size_t num_inputs_a, size_t num_inputs_b,
              size_t num_outputs) {
@@ -183,69 +212,174 @@ void gc_init(GarbledCircuit *gc, size_t num_inputs_a, size_t num_inputs_b,
     gc->num_outputs  = num_outputs;
     gc->num_wires    = num_inputs_a + num_inputs_b + num_outputs + 64;
     gc->num_gates    = gc->num_wires;
-    size_t gate_bytes = gc->num_gates * sizeof(uint8_t) * 4;
-    gc->gates = (uint8_t *)calloc(gate_bytes, 1);
-    gc->input_labels_a = (uint8_t *)calloc(num_inputs_a, 1);
-    gc->input_labels_b = (uint8_t *)calloc(num_inputs_b, 1);
+    gc->gate_defs    = (GCGate *)calloc(gc->num_gates, sizeof(GCGate));
+    gc->garble_table = (uint8_t *)calloc(gc->num_gates * 4 * GC_LABEL_BYTES, 1);
+    gc->wire_labels_0 = (uint8_t *)calloc(gc->num_wires * GC_LABEL_BYTES, 1);
+    gc->wire_labels_1 = (uint8_t *)calloc(gc->num_wires * GC_LABEL_BYTES, 1);
+    gc->input_labels_a = (uint8_t *)calloc(num_inputs_a * GC_LABEL_BYTES, 1);
+    gc->input_labels_b = (uint8_t *)calloc(num_inputs_b * GC_LABEL_BYTES, 1);
 }
 
 void gc_set_gate(GarbledCircuit *gc, size_t gate_idx, size_t in1, size_t in2,
                  size_t out, uint8_t op) {
-    if (!gc->gates || gate_idx >= gc->num_gates) return;
-    size_t base = gate_idx * 4;
-    gc->gates[base]     = (uint8_t)(in1 & 0xFF);
-    gc->gates[base + 1] = (uint8_t)(in2 & 0xFF);
-    gc->gates[base + 2] = (uint8_t)(out & 0xFF);
-    gc->gates[base + 3] = op;
+    if (!gc->gate_defs || gate_idx >= gc->num_gates) return;
+    gc->gate_defs[gate_idx].in1 = in1;
+    gc->gate_defs[gate_idx].in2 = in2;
+    gc->gate_defs[gate_idx].out = out;
+    gc->gate_defs[gate_idx].op  = op;
+}
+
+static void gc_gen_label(uint8_t *label, uint64_t *seed) {
+    *seed = (*seed * 6364136223846793005ULL + 1442695040888963407ULL);
+    for (int i = 0; i < GC_LABEL_BYTES; i++) {
+        label[i] = (uint8_t)((*seed >> (i * 8)) & 0xFF);
+    }
+    /* ensure each label has a distinct least-significant bit for point-and-permute */
+    label[0] = (label[0] & 0xFE);  /* wire 0-label has LSB 0 */
 }
 
 void gc_garble(GarbledCircuit *gc, uint64_t seed) {
-    if (!gc->gates) return;
+    if (!gc->gate_defs) return;
+
+    /* Generate random labels for every wire */
+    for (size_t w = 0; w < gc->num_wires; w++) {
+        gc_gen_label(&gc->wire_labels_0[w * GC_LABEL_BYTES], &seed);
+        uint8_t *l1 = &gc->wire_labels_1[w * GC_LABEL_BYTES];
+        gc_gen_label(l1, &seed);
+        l1[0] |= 0x01;  /* 1-label has LSB 1 */
+    }
+
+    /* Copy input labels for distribution to Alice and Bob */
+    for (size_t i = 0; i < gc->num_inputs_a; i++) {
+        memcpy(&gc->input_labels_a[i * GC_LABEL_BYTES],
+               &gc->wire_labels_0[i * GC_LABEL_BYTES], GC_LABEL_BYTES);
+        memcpy(&gc->input_labels_a[i * GC_LABEL_BYTES + 2 * gc->num_inputs_a],
+               &gc->wire_labels_1[i * GC_LABEL_BYTES], GC_LABEL_BYTES);
+    }
+    for (size_t i = 0; i < gc->num_inputs_b; i++) {
+        memcpy(&gc->input_labels_b[i * GC_LABEL_BYTES],
+               &gc->wire_labels_0[(gc->num_inputs_a + i) * GC_LABEL_BYTES],
+               GC_LABEL_BYTES);
+    }
+
+    /* For each gate, encrypt the output label under the input labels */
     for (size_t i = 0; i < gc->num_gates; i++) {
-        size_t base = i * 4;
-        seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
-        gc->gates[base]     ^= (uint8_t)(seed & 0xFF);
-        gc->gates[base + 1] ^= (uint8_t)((seed >> 8) & 0xFF);
-        gc->gates[base + 2] ^= (uint8_t)((seed >> 16) & 0xFF);
-        gc->gates[base + 3] ^= (uint8_t)((seed >> 24) & 0xFF);
+        GCGate *g = &gc->gate_defs[i];
+        if (g->in1 >= gc->num_wires || g->in2 >= gc->num_wires ||
+            g->out >= gc->num_wires) continue;
+
+        uint8_t *row = &gc->garble_table[i * 4 * GC_LABEL_BYTES];
+        /* Compute output for all 4 input combinations */
+        for (int a = 0; a < 2; a++) {
+            for (int b = 0; b < 2; b++) {
+                int out_val;
+                switch (g->op) {
+                    case 0: out_val = a & b; break;  /* AND */
+                    case 1: out_val = a | b; break;  /* OR */
+                    case 2: out_val = a ^ b; break;  /* XOR */
+                    case 3: out_val = !(a & b); break;  /* NAND */
+                    default: out_val = a & b; break;
+                }
+                uint8_t *out_label = out_val ? &gc->wire_labels_1[g->out * GC_LABEL_BYTES]
+                                             : &gc->wire_labels_0[g->out * GC_LABEL_BYTES];
+                uint8_t *in1_label = a ? &gc->wire_labels_1[g->in1 * GC_LABEL_BYTES]
+                                       : &gc->wire_labels_0[g->in1 * GC_LABEL_BYTES];
+                uint8_t *in2_label = b ? &gc->wire_labels_1[g->in2 * GC_LABEL_BYTES]
+                                       : &gc->wire_labels_0[g->in2 * GC_LABEL_BYTES];
+                int row_idx = (a * 2 + b) * GC_LABEL_BYTES;
+                for (int k = 0; k < GC_LABEL_BYTES; k++) {
+                    row[row_idx + k] = out_label[k] ^ in1_label[k] ^ in2_label[k];
+                }
+            }
+        }
     }
 }
 
 void gc_evaluate(GarbledCircuit *gc, const uint8_t *input_a, const uint8_t *input_b,
                  uint8_t *output) {
-    if (!gc->gates || !input_a || !input_b || !output) return;
-    uint8_t *wire_values = (uint8_t *)calloc(gc->num_wires, 1);
-    if (!wire_values) return;
-    for (size_t i = 0; i < gc->num_inputs_a; i++) wire_values[i] = input_a[i];
-    for (size_t i = 0; i < gc->num_inputs_b; i++) wire_values[gc->num_inputs_a + i] = input_b[i];
-    for (size_t i = 0; i < gc->num_gates; i++) {
-        size_t base = i * 4;
-        uint8_t in1_val = wire_values[gc->gates[base]];
-        uint8_t in2_val = wire_values[gc->gates[base + 1]];
-        uint8_t out_wire = gc->gates[base + 2];
-        uint8_t op       = gc->gates[base + 3];
-        switch (op) {
-            case 0: wire_values[out_wire] = in1_val & in2_val; break;
-            case 1: wire_values[out_wire] = in1_val | in2_val; break;
-            case 2: wire_values[out_wire] = in1_val ^ in2_val; break;
-            case 3: wire_values[out_wire] = in1_val & !in2_val; break;
-            default: wire_values[out_wire] = in1_val & in2_val; break;
+    if (!gc->gate_defs || !gc->garble_table || !input_a || !input_b || !output) return;
+
+    /* Initialize known wire labels. -1 sentinel means unknown. */
+    int *wire_known = (int *)calloc(gc->num_wires, sizeof(int));
+    uint8_t *wire_labels = (uint8_t *)calloc(gc->num_wires * GC_LABEL_BYTES, 1);
+    if (!wire_known || !wire_labels) { free(wire_known); free(wire_labels); return; }
+
+    for (size_t i = 0; i < gc->num_wires; i++) wire_known[i] = 0;
+
+    /* Alice's inputs */
+    for (size_t i = 0; i < gc->num_inputs_a; i++) {
+        wire_known[i] = 1;
+        const uint8_t *label = input_a[i] ? &gc->wire_labels_1[i * GC_LABEL_BYTES]
+                                          : &gc->wire_labels_0[i * GC_LABEL_BYTES];
+        memcpy(&wire_labels[i * GC_LABEL_BYTES], label, GC_LABEL_BYTES);
+    }
+    /* Bob's inputs */
+    for (size_t i = 0; i < gc->num_inputs_b; i++) {
+        size_t widx = gc->num_inputs_a + i;
+        wire_known[widx] = 1;
+        const uint8_t *label = input_b[i] ? &gc->wire_labels_1[widx * GC_LABEL_BYTES]
+                                          : &gc->wire_labels_0[widx * GC_LABEL_BYTES];
+        memcpy(&wire_labels[widx * GC_LABEL_BYTES], label, GC_LABEL_BYTES);
+    }
+
+    /* Evaluate topologically: iterate until all gates are evaluated */
+    int changed = 1;
+    while (changed) {
+        changed = 0;
+        for (size_t i = 0; i < gc->num_gates; i++) {
+            GCGate *g = &gc->gate_defs[i];
+            if (g->in1 >= gc->num_wires || g->in2 >= gc->num_wires ||
+                g->out >= gc->num_wires) continue;
+            if (wire_known[g->out]) continue;       /* already computed */
+            if (!wire_known[g->in1] || !wire_known[g->in2]) continue; /* need inputs */
+
+            uint8_t *in1_l = &wire_labels[g->in1 * GC_LABEL_BYTES];
+            uint8_t *in2_l = &wire_labels[g->in2 * GC_LABEL_BYTES];
+            int a_lsb = in1_l[0] & 0x01;
+            int b_lsb = in2_l[0] & 0x01;
+            int row_idx = (a_lsb * 2 + b_lsb) * GC_LABEL_BYTES;
+
+            uint8_t *enc_row = &gc->garble_table[i * 4 * GC_LABEL_BYTES + row_idx];
+            uint8_t *out_l = &wire_labels[g->out * GC_LABEL_BYTES];
+
+            for (int k = 0; k < GC_LABEL_BYTES; k++) {
+                out_l[k] = enc_row[k] ^ in1_l[k] ^ in2_l[k];
+            }
+            wire_known[g->out] = 1;
+            changed = 1;
         }
     }
-    size_t offset = gc->num_inputs_a + gc->num_inputs_b;
+
+    /* Read output wires: compare against wire_labels_0 to get actual bit */
+    size_t off = gc->num_inputs_a + gc->num_inputs_b;
     for (size_t i = 0; i < gc->num_outputs; i++) {
-        output[i] = wire_values[offset + i];
+        size_t widx = off + i;
+        if (wire_known[widx]) {
+            int is_zero = (memcmp(&wire_labels[widx * GC_LABEL_BYTES],
+                                  &gc->wire_labels_0[widx * GC_LABEL_BYTES],
+                                  GC_LABEL_BYTES) == 0);
+            output[i] = is_zero ? 0 : 1;
+        } else {
+            output[i] = 0;
+        }
     }
-    free(wire_values);
+    free(wire_known);
+    free(wire_labels);
 }
 
 void gc_free(GarbledCircuit *gc) {
-    free(gc->gates);
+    free(gc->gate_defs);
+    free(gc->garble_table);
+    free(gc->wire_labels_0);
+    free(gc->wire_labels_1);
     free(gc->input_labels_a);
     free(gc->input_labels_b);
-    gc->gates          = NULL;
-    gc->input_labels_a = NULL;
-    gc->input_labels_b = NULL;
+    gc->gate_defs       = NULL;
+    gc->garble_table    = NULL;
+    gc->wire_labels_0   = NULL;
+    gc->wire_labels_1   = NULL;
+    gc->input_labels_a  = NULL;
+    gc->input_labels_b  = NULL;
 }
 
 /* ---------- ORAM ---------- */
@@ -429,6 +563,235 @@ void pir_db_free(PIRDatabase *db) {
     free(db->query);
     db->database = NULL;
     db->query    = NULL;
+}
+
+/* ---------- Shamir secret sharing ---------- */
+/*
+ * Shamir (t,n)-threshold scheme over GF(prime).
+ * Dealer picks random polynomial f(x) = a_0 + a_1*x + ... + a_{t-1}*x^{t-1}
+ * where a_0 = secret, a_i are random for i>0.
+ * Share i: (x_i, f(x_i) mod prime). Reconstruction uses Lagrange interpolation.
+ */
+
+void shamir_ss_init(ShamirSS *sss, size_t threshold, size_t num_parties,
+                    uint64_t prime) {
+    sss->threshold   = threshold;
+    sss->num_parties = num_parties;
+    sss->prime       = prime;
+    sss->x_coords    = (uint64_t *)malloc(num_parties * sizeof(uint64_t));
+    if (sss->x_coords) {
+        for (size_t i = 0; i < num_parties; i++) {
+            sss->x_coords[i] = (uint64_t)(i + 1);
+        }
+    }
+}
+
+void shamir_ss_share(const ShamirSS *sss, uint64_t secret, uint64_t *shares_out,
+                     uint64_t *seed) {
+    if (!sss || !shares_out || !seed) return;
+    uint64_t *coeffs = (uint64_t *)malloc(sss->threshold * sizeof(uint64_t));
+    if (!coeffs) return;
+    coeffs[0] = secret % sss->prime;
+    for (size_t i = 1; i < sss->threshold; i++) {
+        *seed = (*seed * 6364136223846793005ULL + 1442695040888963407ULL);
+        coeffs[i] = *seed % sss->prime;
+    }
+    for (size_t i = 0; i < sss->num_parties; i++) {
+        shares_out[i] = mpc_poly_eval(coeffs, sss->threshold - 1,
+                                      sss->x_coords[i], sss->prime);
+    }
+    free(coeffs);
+}
+
+int shamir_ss_reconstruct(const ShamirSS *sss, const uint64_t *xi_indices,
+                          const uint64_t *shares, size_t num_present,
+                          uint64_t *secret_out) {
+    if (!sss || !xi_indices || !shares || !secret_out) return 0;
+    if (num_present < sss->threshold) return 0;
+    uint64_t *xi = (uint64_t *)malloc(num_present * sizeof(uint64_t));
+    if (!xi) return 0;
+    for (size_t i = 0; i < num_present; i++) {
+        xi[i] = sss->x_coords[xi_indices[i]];
+    }
+    *secret_out = mpc_lagrange_interp(xi, shares, num_present, 0, sss->prime);
+    free(xi);
+    return 1;
+}
+
+void shamir_ss_free(ShamirSS *sss) {
+    free(sss->x_coords);
+    sss->x_coords = NULL;
+}
+
+/* ---------- polynomial utilities ---------- */
+
+uint64_t mpc_poly_eval(const uint64_t *coeffs, size_t degree, uint64_t x,
+                       uint64_t mod) {
+    uint64_t result = 0;
+    uint64_t x_pow  = 1;
+    for (size_t i = 0; i <= degree; i++) {
+        uint64_t term = (coeffs[i] % mod) * (x_pow % mod);
+        result = (result + term) % mod;
+        x_pow  = (x_pow * (x % mod)) % mod;
+    }
+    return result;
+}
+
+uint64_t mpc_lagrange_interp(const uint64_t *xi, const uint64_t *yi, size_t n,
+                              uint64_t x, uint64_t mod) {
+    uint64_t result = 0;
+    for (size_t i = 0; i < n; i++) {
+        uint64_t numerator   = 1;
+        uint64_t denominator = 1;
+        for (size_t j = 0; j < n; j++) {
+            if (i == j) continue;
+            numerator   = (numerator * ((x + mod - xi[j]) % mod)) % mod;
+            denominator = (denominator * ((xi[i] + mod - xi[j]) % mod)) % mod;
+        }
+        uint64_t denom_inv = mpc_mod_inv(denominator, mod);
+        uint64_t term = (yi[i] % mod) * numerator % mod;
+        term = (term * denom_inv) % mod;
+        result = (result + term) % mod;
+    }
+    return result;
+}
+
+/* ---------- homomorphic encryption: Paillier (L8) ---------- */
+/*
+ * Paillier: n = p*q, lambda = lcm(p-1, q-1), g = n+1.
+ * Enc(m, r) = g^m * r^n  mod n^2
+ * Dec(c) = L(c^lambda mod n^2) / L(g^lambda mod n^2) mod n
+ *   where L(u) = (u-1)/n
+ */
+
+static uint64_t gcd64(uint64_t a, uint64_t b) {
+    while (b) { uint64_t t = b; b = a % b; a = t; }
+    return a;
+}
+
+static uint64_t lcm64(uint64_t a, uint64_t b) {
+    if (a == 0 || b == 0) return 0;
+    return a / gcd64(a, b) * b;
+}
+
+static int is_prime_small(uint64_t n) {
+    if (n < 2) return 0;
+    if (n % 2 == 0) return n == 2;
+    for (uint64_t i = 3; i * i <= n && i < 1000; i += 2) {
+        if (n % i == 0) return 0;
+    }
+    return 1;
+}
+
+int paillier_keygen(PaillierPubKey *pub, PaillierPrivKey *priv, int bits) {
+    if (!pub || !priv || bits > 15) return 0;
+    /* Use small primes for demos (safe against 64-bit overflow in mpc_mod_exp) */
+    uint64_t demo_primes[] = {251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313};
+    int n_primes = (int)(sizeof(demo_primes) / sizeof(demo_primes[0]));
+    uint64_t p = demo_primes[0];
+    uint64_t q = demo_primes[1];
+    /* Ensure n^2 < 2^32 so all intermediate products in modexp fit uint64 */
+    /* n = p*q < 2^16, n^2 < 2^32, safe for (mod-1)^2 < 2^64 */
+    for (int i = 0; i < n_primes; i++) {
+        for (int j = 0; j < n_primes; j++) {
+            if (i != j) {
+                uint64_t pp = demo_primes[i];
+                uint64_t qq = demo_primes[j];
+                if ((pp * qq * pp * qq) < (1ULL << 32)) {
+                    p = pp; q = qq; goto found_primes;
+                }
+            }
+        }
+    }
+found_primes:
+    (void)bits;
+    if (p == q) return 0;
+    if (!is_prime_small(p) || !is_prime_small(q)) return 0;
+    priv->p = p;
+    priv->q = q;
+    pub->n    = p * q;
+    pub->n_sq = pub->n * pub->n;
+    pub->g    = pub->n + 1;
+    pub->lambda = lcm64(p - 1, q - 1);
+    uint64_t g_lambda = mpc_mod_exp(pub->g, pub->lambda, pub->n_sq);
+    uint64_t L_val = (g_lambda - 1) / pub->n;
+    pub->mu = mpc_mod_inv(L_val, pub->n);
+    return 1;
+}
+
+void paillier_encrypt(const PaillierPubKey *pub, uint64_t plaintext,
+                      uint64_t *ciphertext, uint64_t *seed) {
+    if (!pub || !ciphertext || !seed) return;
+    uint64_t m = plaintext % pub->n;
+    *seed = (*seed * 6364136223846793005ULL + 1442695040888963407ULL);
+    uint64_t r = (*seed % (pub->n - 1)) + 1;
+    while (gcd64(r, pub->n) != 1) {
+        *seed = (*seed * 6364136223846793005ULL + 1442695040888963407ULL);
+        r = (*seed % (pub->n - 1)) + 1;
+    }
+    uint64_t g_m = mpc_mod_exp(pub->g, m, pub->n_sq);
+    uint64_t r_n = mpc_mod_exp(r, pub->n, pub->n_sq);
+    *ciphertext = (g_m * r_n) % pub->n_sq;
+}
+
+uint64_t paillier_decrypt(const PaillierPubKey *pub, const PaillierPrivKey *priv,
+                          uint64_t ciphertext) {
+    if (!pub || !priv) return 0;
+    uint64_t c_lambda = mpc_mod_exp(ciphertext, pub->lambda, pub->n_sq);
+    uint64_t L_val = (c_lambda - 1) / pub->n;
+    return (L_val * pub->mu) % pub->n;
+}
+
+uint64_t paillier_add(const PaillierPubKey *pub, uint64_t ct1, uint64_t ct2) {
+    if (!pub) return 0;
+    return (ct1 * ct2) % pub->n_sq;
+}
+
+uint64_t paillier_scalar_mul(const PaillierPubKey *pub, uint64_t ct,
+                              uint64_t scalar) {
+    if (!pub) return 0;
+    return mpc_mod_exp(ct, scalar, pub->n_sq);
+}
+
+uint64_t paillier_rerandomize(const PaillierPubKey *pub, uint64_t ct,
+                               uint64_t *seed) {
+    if (!pub || !seed) return 0;
+    *seed = (*seed * 6364136223846793005ULL + 1442695040888963407ULL);
+    uint64_t r = (*seed % (pub->n - 1)) + 1;
+    while (gcd64(r, pub->n) != 1) {
+        *seed = (*seed * 6364136223846793005ULL + 1442695040888963407ULL);
+        r = (*seed % (pub->n - 1)) + 1;
+    }
+    uint64_t r_n = mpc_mod_exp(r, pub->n, pub->n_sq);
+    return (ct * r_n) % pub->n_sq;
+}
+
+/* ---------- formal DP composition theorems (L4) ---------- */
+/*
+ * Prints the formal statements of the three core DP composition theorems
+ * that underpin the entire differential privacy framework.
+ */
+void dp_print_composition_theorems(void) {
+    printf("=== DP Composition Theorems (Dwork-Roth 2014) ===\n");
+    printf("L4.1 Basic Sequential Composition:\n");
+    printf("  If M_i is (eps_i, delta_i)-DP for i=1..k, then their\n");
+    printf("  sequential composition is (sum eps_i, sum delta_i)-DP.\n\n");
+
+    printf("L4.2 Parallel Composition:\n");
+    printf("  If M_i operates on disjoint subsets D_i of dataset D,\n");
+    printf("  and each M_i is eps-DP, then the combined mechanism is\n");
+    printf("  (max_i eps_i)-DP (NOT the sum).\n\n");
+
+    printf("L4.3 Advanced Composition (Dwork-Rothblum-Vadhan 2010):\n");
+    printf("  For eps <= 1, k-fold adaptive composition yields\n");
+    printf("  (eps', k*delta + delta')-DP where\n");
+    printf("  eps' = sqrt(2k ln(1/delta')) * eps + k*eps*(e^eps - 1).\n\n");
+
+    printf("L4.4 Moments Accountant (Abadi et al. 2016):\n");
+    printf("  Uses Renyi DP: M is (alpha, eps)-RDP if\n");
+    printf("  D_alpha(P||Q) <= eps for all adjacent datasets.\n");
+    printf("  Tighter composition than advanced composition.\n");
+    printf("=================================================\n");
 }
 
 /* ---------- utility ---------- */

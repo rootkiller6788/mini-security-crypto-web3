@@ -166,7 +166,7 @@ int waf_ip_in_cidr(const char *ip, const char *cidr) {
     return (ip_int & mask) == (cidr_int & mask);
 }
 
-waf_action_t waf_evaluate_rule(const waf_rule_t *rule,
+waf_action_t waf_evaluate_rule(waf_rule_t *rule,
                                 const waf_request_t *req,
                                 waf_state_t *state) {
     if (!rule || !rule->enabled || !req) return WAF_ACTION_ALLOW;
@@ -181,7 +181,7 @@ waf_action_t waf_evaluate_rule(const waf_rule_t *rule,
                 break;
             case WAF_COND_STRING_MATCH:
                 if (strstr(req->body, c->match_value) ||
-                    (req->uri && strstr(req->uri, c->match_value))) {
+                    strstr(req->uri, c->match_value)) {
                     matched = 1;
                 } else goto next_rule;
                 break;
@@ -233,7 +233,7 @@ waf_action_t waf_evaluate_rule(const waf_rule_t *rule,
     return WAF_ACTION_ALLOW;
 }
 
-waf_action_t waf_evaluate_group(const waf_rule_group_t *group,
+waf_action_t waf_evaluate_group(waf_rule_group_t *group,
                                  const waf_request_t *req,
                                  waf_state_t *state) {
     if (!group || !group->enabled) return WAF_ACTION_ALLOW;
@@ -245,6 +245,7 @@ waf_action_t waf_evaluate_group(const waf_rule_group_t *group,
 }
 
 waf_action_t waf_evaluate_all(waf_state_t *state, const waf_request_t *req) {
+    /* note: passes non-const group to waf_evaluate_group for metric tracking */
     if (!state || !req) return WAF_ACTION_ALLOW;
     state->total_requests++;
     waf_action_t final_action = WAF_ACTION_ALLOW;

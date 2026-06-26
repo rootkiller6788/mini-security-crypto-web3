@@ -61,6 +61,7 @@ void fl_upload_update(       FLServer *server, const double *gradients,
 
 typedef struct {
     double *weighted_sum;
+    size_t  num_params;
     size_t  total_samples;
     size_t  num_updates;
 } FedAvgState;

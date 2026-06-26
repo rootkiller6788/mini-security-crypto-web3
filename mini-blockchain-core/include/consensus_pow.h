@@ -16,6 +16,8 @@ extern "C" {
 #define POW_MAX_NONCE         UINT64_MAX
 #define POW_GENESIS_BITS      0x1d00ffff
 
+typedef struct pow_block_s pow_block;
+
 typedef struct {
     int32_t  version;
     uint8_t  prev_block_hash[POW_HASH_LEN];
@@ -25,7 +27,7 @@ typedef struct {
     uint32_t nonce;
 } pow_block_header;
 
-typedef struct {
+struct pow_block_s {
     pow_block_header header;
     uint32_t         tx_count;
     uint8_t         *tx_data;
@@ -33,13 +35,13 @@ typedef struct {
     uint8_t          block_hash[POW_HASH_LEN];
     uint32_t         height;
     uint64_t         chain_work;
-    struct pow_block_s *prev;
-    struct pow_block_s *next;
-    struct pow_block_s *uncles[2];
-    int                uncle_count;
-} pow_block;
+    pow_block       *prev;
+    pow_block       *next;
+    pow_block       *uncles[2];
+    int              uncle_count;
+};
 
-typedef struct {
+typedef struct pow_chain_s {
     pow_block *head;
     pow_block *tail;
     size_t     length;

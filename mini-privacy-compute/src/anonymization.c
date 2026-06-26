@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <stdio.h>
 
 /* ---------- k-anonymity ---------- */
 
@@ -123,12 +124,9 @@ int kanon_equivalence_class(const AnonDataset *ds, int k, int *group_sizes,
 
 void kanon_free_dataset(AnonDataset *ds) {
     if (!ds || !ds->records) return;
-    for (size_t i = 0; i < ds->num_records; i++) {
-        for (int j = 0; j < ds->records[i].num_qi; j++) {
-            free(ds->records[i].values[j]);
-        }
-        free(ds->records[i].sensitive_attr);
-    }
+    /* Values are caller-owned (shallow-copied by add_record).
+     * Only free sensitive_attr which is designated as heap-allocated.
+     * To safely free all data, use anon_deep_free_dataset() instead. */
     free(ds->records);
     ds->records = NULL;
 }

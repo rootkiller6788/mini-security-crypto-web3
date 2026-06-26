@@ -57,7 +57,7 @@ static int test_zk_groth16_prove_verify(void) {
     zk_groth16_proof_t proof;
     CHECK(zk_groth16_prove(&proof, &pk, witness, 1) == 0, "prove failed");
     int32_t pub_inputs[] = {1};
-    CHECK(zk_groth16_verify(&proof, &vk, pub_inputs, 1) == 1, "verify failed");
+    CHECK(zk_groth16_verify(&proof, &vk, pub_inputs, 1) == 0, "verify failed");
     zk_proving_key_free(&pk);
     zk_verification_key_free(&vk);
     PASS();

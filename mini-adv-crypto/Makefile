@@ -1,10 +1,17 @@
 CC      = gcc
-CFLAGS  = -std=c99 -Wall -Wextra -pedantic -O2 -march=native
+CFLAGS  = -std=c99 -Wall -Wextra -pedantic -O2 -march=native -Iinclude
 LDFLAGS = -lm
 
-SRCS    = zk_proof.c homomorphic_enc.c mpc_proto.c post_quantum.c threshold_sig.c
-OBJS    = $(SRCS:.c=.o)
-HDRS    = zk_proof.h homomorphic_enc.h mpc_proto.h post_quantum.h threshold_sig.h
+SRC_DIR = src
+INC_DIR = include
+EXA_DIR = examples
+TST_DIR = tests
+
+SRCS    = $(SRC_DIR)/zk_proof.c $(SRC_DIR)/homomorphic_enc.c $(SRC_DIR)/mpc_proto.c \
+          $(SRC_DIR)/post_quantum.c $(SRC_DIR)/threshold_sig.c \
+          $(SRC_DIR)/crypto_theorems.c $(SRC_DIR)/crypto_apps.c $(SRC_DIR)/crypto_advanced.c
+OBJS    = zk_proof.o homomorphic_enc.o mpc_proto.o post_quantum.o threshold_sig.o \
+          crypto_theorems.o crypto_apps.o crypto_advanced.o
 
 EXAMPLES = example_zk example_he example_mpc
 DEMOS    = demo_full demo_bench
@@ -16,23 +23,48 @@ all: libminicrypto.a
 libminicrypto.a: $(OBJS)
 	ar rcs $@ $^
 
-%.o: %.c $(HDRS)
+# Pattern: compile src/xxx.c -> xxx.o
+zk_proof.o: $(SRC_DIR)/zk_proof.c $(INC_DIR)/zk_proof.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-example_zk.exe: example_zk.c libminicrypto.a
-	$(CC) $(CFLAGS) $< -L. -lminicrypto $(LDFLAGS) -o $@
+homomorphic_enc.o: $(SRC_DIR)/homomorphic_enc.c $(INC_DIR)/homomorphic_enc.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
-example_he.exe: example_he.c libminicrypto.a
-	$(CC) $(CFLAGS) $< -L. -lminicrypto $(LDFLAGS) -o $@
+mpc_proto.o: $(SRC_DIR)/mpc_proto.c $(INC_DIR)/mpc_proto.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
-example_mpc.exe: example_mpc.c libminicrypto.a
-	$(CC) $(CFLAGS) $< -L. -lminicrypto $(LDFLAGS) -o $@
+post_quantum.o: $(SRC_DIR)/post_quantum.c $(INC_DIR)/post_quantum.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
-demo_full.exe: demo_full.c libminicrypto.a
-	$(CC) $(CFLAGS) $< -L. -lminicrypto $(LDFLAGS) -o $@
+threshold_sig.o: $(SRC_DIR)/threshold_sig.c $(INC_DIR)/threshold_sig.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
-demo_bench.exe: demo_bench.c libminicrypto.a
-	$(CC) $(CFLAGS) $< -L. -lminicrypto $(LDFLAGS) -o $@
+crypto_theorems.o: $(SRC_DIR)/crypto_theorems.c $(INC_DIR)/crypto_theorems.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+crypto_apps.o: $(SRC_DIR)/crypto_apps.c $(INC_DIR)/crypto_apps.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+crypto_advanced.o: $(SRC_DIR)/crypto_advanced.c $(INC_DIR)/crypto_advanced.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+example_zk.exe: $(EXA_DIR)/example_zk.c libminicrypto.a
+	$(CC) $(CFLAGS) -I$(INC_DIR) $< -L. -lminicrypto $(LDFLAGS) -o $@
+
+example_he.exe: $(EXA_DIR)/example_he.c libminicrypto.a
+	$(CC) $(CFLAGS) -I$(INC_DIR) $< -L. -lminicrypto $(LDFLAGS) -o $@
+
+example_mpc.exe: $(EXA_DIR)/example_mpc.c libminicrypto.a
+	$(CC) $(CFLAGS) -I$(INC_DIR) $< -L. -lminicrypto $(LDFLAGS) -o $@
+
+demo_full.exe: $(EXA_DIR)/demo_full.c libminicrypto.a
+	$(CC) $(CFLAGS) -I$(INC_DIR) $< -L. -lminicrypto $(LDFLAGS) -o $@
+
+demo_bench.exe: $(EXA_DIR)/demo_bench.c libminicrypto.a
+	$(CC) $(CFLAGS) -I$(INC_DIR) $< -L. -lminicrypto $(LDFLAGS) -o $@
+
+test_core.exe: $(TST_DIR)/test_core.c libminicrypto.a
+	$(CC) $(CFLAGS) -I$(INC_DIR) $< -L. -lminicrypto $(LDFLAGS) -o $@
 
 examples: libminicrypto.a example_zk.exe example_he.exe example_mpc.exe
 
@@ -53,8 +85,13 @@ run_full: demo_full.exe
 run_bench: demo_bench.exe
 	./demo_bench.exe
 
-test: all examples
-	@echo "=== Running all examples ==="
+run_test: test_core.exe
+	./test_core.exe
+
+test: all examples demos test_core.exe
+	@echo "=== Running unit tests ==="
+	./test_core.exe
+	@echo "=== Running examples ==="
 	./example_zk.exe
 	./example_he.exe
 	./example_mpc.exe
@@ -64,4 +101,4 @@ test: all examples
 	@echo "=== All tests passed ==="
 
 clean:
-	del /f *.o *.a *.exe 2>nul || rm -f *.o *.a *.exe
+	rm -f *.o *.a *.exe

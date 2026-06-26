@@ -48,7 +48,7 @@ typedef struct {
 typedef struct {
     AMMPool pool;
     uint64_t sqrt_price_x96;
-    int24_t current_tick;
+    int32_t current_tick;
     uint64_t tick_spacing;
     uint64_t fee_protocol_bps;
 } AMMV3Pool;

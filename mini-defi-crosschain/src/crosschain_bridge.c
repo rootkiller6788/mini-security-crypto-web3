@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static uint32_t bridge_rand_seed = 0x8R1D6E01;
+static uint32_t bridge_rand_seed = 0x8B1D6E01;
 
 static uint32_t bridge_rand(void) {
     bridge_rand_seed = bridge_rand_seed * 1103515245 + 12345;

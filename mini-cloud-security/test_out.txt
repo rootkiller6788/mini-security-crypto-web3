@@ -1,0 +1,49 @@
+=== mini-cloud-security Unit Tests ===
+
+  TEST iam_policy_create_evaluate ... PASS
+  TEST iam_explicit_deny ... PASS
+  TEST kms_create_key ... PASS
+  TEST kms_encrypt_decrypt ... PASS
+  TEST kms_envelope_encrypt ... PASS
+  TEST waf_sqli_detection ... PASS
+  TEST waf_xss_detection ... PASS
+  TEST waf_rate_check ... PASS
+  TEST container_scan_image ... PASS
+  TEST container_seccomp_profile ... PASS
+  TEST ddos_init_and_detect ... PASS
+  TEST ddos_record_traffic ... PASS
+  TEST audit_trail_create_log ... Audit Trail: main-trail
+  S3 Bucket:      s3://audit-logs-bucket
+  Events:         1
+  Chain Verified: YES
+  Multi-Region:   no
+  Encryption:     enabled
+  Time Range:     Thu Jun 25 12:48:02 2026
+               -> Thu Jun 25 12:48:02 2026
+PASS
+  TEST audit_tamper_detection ... PASS
+  TEST merkle_tree ... PASS
+  TEST compliance_engine ... Compliance State Summary:
+  Trails:         0
+  Rules:          19
+  Findings:       33
+  Total Checks:   33
+  Passed:         7
+  Failed:         26
+  Pass Rate:      21%
+  [F] encryption on arn:aws:s3:::my-bucket (risk=100.0)
+  [F] encryption on arn:aws:s3:::my-bucket (risk=80.0)
+  [F] encryption on arn:aws:s3:::my-bucket (risk=80.0)
+  [F] encryption on arn:aws:s3:::my-bucket (risk=100.0)
+  [P] encryption on arn:aws:s3:::encrypted-bucket (risk=6.2)
+  [P] encryption on arn:aws:s3:::encrypted-bucket (risk=5.0)
+  [P] encryption on arn:aws:s3:::encrypted-bucket (risk=5.0)
+  [P] encryption on arn:aws:s3:::encrypted-bucket (risk=6.2)
+  [F] public_access on arn:aws:s3:::public-bucket (risk=100.0)
+  [F] public_access on arn:aws:s3:::public-bucket (risk=80.0)
+PASS
+  TEST vpc_sg_create_evaluate ... PASS
+  TEST vpc_nacl_evaluate ... PASS
+  TEST vpc_cidr_operations ... PASS
+
+=== Results: 19/19 passed, 0 failed ===

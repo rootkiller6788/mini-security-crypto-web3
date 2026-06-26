@@ -44,7 +44,7 @@ int main(void) {
         "Policy updates, training requirements",
         "Accept residual risks R-004, increase security budget", 2025);
 
-    iso27001.pdca_report(&isms);
+    iso27001_pdca_report(&isms);
 
     int risk_ids[16], risk_count;
     iso27001_risks_by_asset(&isms, 1, risk_ids, &risk_count, 16);

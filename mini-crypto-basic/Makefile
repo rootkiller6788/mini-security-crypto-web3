@@ -16,12 +16,12 @@ OBJS = $(SRCS:.c=.o)
 EXAMPLES = demo_hash demo_aes_rsa demo_pki
 EXE_FILES = $(addprefix $(OUTDIR)/, $(EXAMPLES))
 
-.PHONY: all clean run-demos
+.PHONY: all clean run-demos test
 
 all: dirs $(EXE_FILES)
 
 dirs:
-	if not exist $(OUTDIR) mkdir $(OUTDIR)
+	mkdir -p $(OUTDIR)
 
 $(OUTDIR)/demo_hash: $(OBJS) $(EXAMPDIR)/demo_hash.c
 	$(CC) $(CFLAGS) $(OBJS) $(EXAMPDIR)/demo_hash.c -o $@
@@ -42,7 +42,11 @@ run-demos: all
 	@echo === Running demo_pki ===
 	$(OUTDIR)/demo_pki
 
+test: all
+	$(CC) $(CFLAGS) $(OBJS) tests/test_core.c -o $(OUTDIR)/test_core
+	$(OUTDIR)/test_core
+
 clean:
-	del /q $(SRCDIR)\*.o 2>nul
-	del /q $(OUTDIR)\*.exe 2>nul
-	del /q $(OUTDIR)\* 2>nul
+	rm -f $(SRCDIR)/*.o 2>/dev/null
+	rm -f $(OUTDIR)/*.exe 2>/dev/null
+	rm -f $(OUTDIR)/* 2>/dev/null

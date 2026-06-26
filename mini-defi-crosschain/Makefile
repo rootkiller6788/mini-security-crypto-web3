@@ -12,7 +12,9 @@ DEMDIR = demos
 OUTDIR = bin
 
 SRCS = $(SRCDIR)/amm_swap.c $(SRCDIR)/lending_proto.c $(SRCDIR)/stablecoin.c \
-       $(SRCDIR)/crosschain_bridge.c $(SRCDIR)/oracle_price.c
+       $(SRCDIR)/crosschain_bridge.c $(SRCDIR)/oracle_price.c \
+       $(SRCDIR)/yield_aggregator.c $(SRCDIR)/governance_dao.c \
+       $(SRCDIR)/derivatives.c $(SRCDIR)/mev_protection.c
 
 OBJS = $(SRCS:$(SRCDIR)/%.c=$(OUTDIR)/%.o)
 
@@ -53,7 +55,12 @@ demo_crosschain: $(DEMDIR)/demo_crosschain.c $(OUTDIR)/crosschain_bridge.o $(OUT
 	@echo "  Running demo_crosschain..."
 	$(OUTDIR)/demo_crosschain
 
-test: example_amm example_lending example_oracle demo_full_defi demo_crosschain
+test_core: $(OBJS) | $(OUTDIR)
+	$(EXPORT_PATH) && $(CC) $(CFLAGS) tests/test_core.c $(OBJS) -o $(OUTDIR)/test_core $(LDFLAGS)
+	@echo "  Running unit tests..."
+	$(OUTDIR)/test_core
+
+test: example_amm example_lending example_oracle demo_full_defi demo_crosschain test_core
 	@echo ""
 	@echo "========================================"
 	@echo "  ALL TESTS COMPLETE"
@@ -63,4 +70,4 @@ clean:
 	@rm -rf "$(OUTDIR)"
 	@echo "Cleaned build artifacts."
 
-.PHONY: all test clean example_amm example_lending example_oracle demo_full_defi demo_crosschain
+.PHONY: all test test_core clean example_amm example_lending example_oracle demo_full_defi demo_crosschain

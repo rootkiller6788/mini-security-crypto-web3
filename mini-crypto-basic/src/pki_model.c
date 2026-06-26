@@ -28,6 +28,7 @@ void csr_set_ec_key(CsrRequest *csr, const uint8_t *pub_key, size_t pub_key_len)
 }
 
 bool csr_sign(CsrRequest *csr, const void *priv_key, size_t key_bits) {
+    (void)priv_key; (void)key_bits;
     uint8_t hash[32];
     sha256_hash((const uint8_t *)csr, sizeof(CsrRequest) - sizeof(csr->der_encoded), hash);
     memcpy(csr->der_encoded, hash, 32);
@@ -299,4 +300,216 @@ bool ocsp_staple_verify(const uint8_t *stapled_data, size_t data_len,
             return false;
     }
     return true;
+}
+
+/* ─── Key Lifecycle Management ────────────────────────────────── */
+/* NIST SP 800-57 Part 1: Recommendation for Key Management */
+
+void key_lifecycle_init(ManagedKey *mk, KeyAlgorithm algo, const char *key_id) {
+    memset(mk, 0, sizeof(ManagedKey));
+    mk->meta.algo = algo;
+    strncpy(mk->meta.key_id, key_id, 63);
+    mk->meta.state = KEY_STATE_PRE_ACTIVE;
+    mk->meta.created_at = (uint64_t)time(NULL);
+    mk->meta.exportable = false;
+    mk->meta.usage_count = 0;
+    mk->has_cert = false;
+
+    /* Determine expiry based on algorithm type */
+    uint64_t max_life;
+    switch (algo) {
+        case KEY_ALGO_RSA_2048: max_life = 365 * 2;     break;
+        case KEY_ALGO_RSA_4096: max_life = 365 * 5;     break;
+        case KEY_ALGO_EC_P256:  max_life = 365 * 3;     break;
+        case KEY_ALGO_EC_P384:  max_life = 365 * 5;     break;
+        default:                max_life = 365;          break;
+    }
+    mk->meta.expires_at = mk->meta.created_at + max_life * 86400ULL;
+}
+
+bool key_lifecycle_activate(ManagedKey *mk, uint64_t validity_days) {
+    if (!mk) return false;
+    if (mk->meta.state != KEY_STATE_PRE_ACTIVE) return false;
+    if (mk->key_data_len == 0) {
+        /* Generate simulated key material */
+        size_t key_sz;
+        switch (mk->meta.algo) {
+            case KEY_ALGO_RSA_2048: key_sz = 256; break;
+            case KEY_ALGO_RSA_4096: key_sz = 512; break;
+            case KEY_ALGO_EC_P256:  key_sz = 32;  break;
+            case KEY_ALGO_EC_P384:  key_sz = 48;  break;
+            default:                key_sz = 32;  break;
+        }
+        size_t i;
+        for (i = 0; i < key_sz && i < sizeof(mk->key_data); i++)
+            mk->key_data[i] = (uint8_t)(rand() % 256);
+        mk->key_data_len = key_sz;
+    }
+    mk->meta.state = KEY_STATE_ACTIVE;
+    mk->meta.activated_at = (uint64_t)time(NULL);
+    if (validity_days > 0)
+        mk->meta.expires_at = mk->meta.activated_at + validity_days * 86400ULL;
+    return true;
+}
+
+bool key_lifecycle_deactivate(ManagedKey *mk) {
+    if (!mk) return false;
+    if (mk->meta.state != KEY_STATE_ACTIVE) return false;
+    mk->meta.state = KEY_STATE_DEACTIVATED;
+    mk->meta.deactivated_at = (uint64_t)time(NULL);
+    return true;
+}
+
+bool key_lifecycle_revoke_compromised(ManagedKey *mk) {
+    if (!mk) return false;
+    mk->meta.state = KEY_STATE_COMPROMISED;
+    mk->meta.deactivated_at = (uint64_t)time(NULL);
+    /* Zeroize key material on compromise */
+    memset(mk->key_data, 0, sizeof(mk->key_data));
+    mk->key_data_len = 0;
+    return true;
+}
+
+bool key_lifecycle_destroy(ManagedKey *mk) {
+    if (!mk) return false;
+    if (mk->meta.state == KEY_STATE_DESTROYED) return false;
+    /* Cryptographic erasure: overwrite key material */
+    volatile uint8_t *v = mk->key_data;
+    size_t i;
+    for (i = 0; i < sizeof(mk->key_data); i++) v[i] = 0;
+    memset(&mk->meta, 0, sizeof(mk->meta));
+    memset(mk->key_data, 0, sizeof(mk->key_data));
+    mk->key_data_len = 0;
+    mk->has_cert = false;
+    mk->meta.state = KEY_STATE_DESTROYED;
+    mk->meta.destroyed_at = (uint64_t)time(NULL);
+    return true;
+}
+
+bool key_lifecycle_archive(ManagedKey *mk) {
+    if (!mk) return false;
+    if (mk->meta.state != KEY_STATE_DEACTIVATED) return false;
+    mk->meta.state = KEY_STATE_ARCHIVED;
+    /* In a real HSM, key would be moved to offline storage */
+    return true;
+}
+
+bool key_lifecycle_is_usable(const ManagedKey *mk, uint64_t now) {
+    if (!mk) return false;
+    if (mk->meta.state != KEY_STATE_ACTIVE) return false;
+    uint64_t t = (now > 0) ? now : (uint64_t)time(NULL);
+    return t >= mk->meta.activated_at && t < mk->meta.expires_at;
+}
+
+/* ─── Certificate Renewal Policy ──────────────────────────────── */
+
+void renewal_policy_init(RenewalPolicy *policy, RenewalStrategy strategy) {
+    memset(policy, 0, sizeof(RenewalPolicy));
+    policy->strategy = strategy;
+    switch (strategy) {
+        case RENEWAL_FIXED_WINDOW:
+            policy->renewal_window_secs = 30ULL * 86400ULL; /* 30 days */
+            policy->require_new_key = false;
+            break;
+        case RENEWAL_PERCENTAGE_LIFETIME:
+            policy->renewal_pct_lifetime = 0.33;
+            policy->require_new_key = false;
+            break;
+        case RENEWAL_KEY_CHANGE:
+            policy->renewal_window_secs = 60ULL * 86400ULL;
+            policy->require_new_key = true;
+            policy->max_auto_renewals = 1;
+            break;
+        case RENEWAL_MANUAL_ONLY:
+            policy->max_auto_renewals = 0;
+            policy->require_new_key = true;
+            break;
+    }
+}
+
+bool renewal_policy_should_renew(const RenewalPolicy *policy,
+                                  const X509Certificate *cert,
+                                  uint64_t now) {
+    if (!policy || !cert) return false;
+    if (policy->max_auto_renewals > 0 &&
+        policy->renewal_count >= policy->max_auto_renewals)
+        return false;
+
+    uint64_t t = (now > 0) ? now : (uint64_t)time(NULL);
+    uint64_t lifetime = cert->not_after - cert->not_before;
+
+    switch (policy->strategy) {
+        case RENEWAL_FIXED_WINDOW:
+            return (cert->not_after > policy->renewal_window_secs) &&
+                   (t >= cert->not_after - policy->renewal_window_secs);
+        case RENEWAL_PERCENTAGE_LIFETIME: {
+            uint64_t renewal_time = cert->not_before +
+                (uint64_t)((double)lifetime * (1.0 - policy->renewal_pct_lifetime));
+            return t >= renewal_time;
+        }
+        case RENEWAL_KEY_CHANGE:
+            return (cert->not_after > policy->renewal_window_secs) &&
+                   (t >= cert->not_after - policy->renewal_window_secs);
+        case RENEWAL_MANUAL_ONLY:
+            return false;
+    }
+    return false;
+}
+
+bool renewal_policy_record_renewal(RenewalPolicy *policy) {
+    if (!policy) return false;
+    policy->renewal_count++;
+    policy->last_renewal_time = (uint64_t)time(NULL);
+    return true;
+}
+
+/* ─── PKI Event Audit Log ─────────────────────────────────────── */
+
+void pki_audit_init(PkiAuditLog *log) {
+    memset(log, 0, sizeof(PkiAuditLog));
+}
+
+void pki_audit_record(PkiAuditLog *log, PkiEventType type,
+                      const char *desc, const uint8_t *fp) {
+    if (!log || log->count >= PKI_AUDIT_MAX_EVENTS) return;
+    PkiAuditEntry *e = &log->entries[log->count++];
+    e->timestamp = (uint64_t)time(NULL);
+    e->event_type = type;
+    if (desc) {
+        strncpy(e->description, desc, 255);
+        e->description[255] = '\0';
+    }
+    if (fp) memcpy(e->fingerprint, fp, 32);
+    else memset(e->fingerprint, 0, 32);
+}
+
+const PkiAuditEntry *pki_audit_query(const PkiAuditLog *log,
+                                      PkiEventType type, size_t *count) {
+    if (!log) { if (count) *count = 0; return NULL; }
+    static PkiAuditEntry results[PKI_AUDIT_MAX_EVENTS];
+    size_t n = 0;
+    size_t i;
+    for (i = 0; i < log->count && n < PKI_AUDIT_MAX_EVENTS; i++) {
+        if (log->entries[i].event_type == type)
+            results[n++] = log->entries[i];
+    }
+    if (count) *count = n;
+    return (n > 0) ? results : NULL;
+}
+
+void pki_audit_dump(const PkiAuditLog *log) {
+    if (!log) return;
+    printf("=== PKI Audit Log (%zu events) ===\n", log->count);
+    static const char *EVENT_NAMES[] = {
+        "KEY_GEN", "KEY_ACTIVATE", "KEY_DEACTIVATE", "KEY_COMPROMISE",
+        "KEY_DESTROY", "CERT_ISSUE", "CERT_REVOKE", "CERT_RENEW",
+        "CSR_RECEIVED", "OCSP_QUERY", "ACME_ORDER"
+    };
+    size_t i;
+    for (i = 0; i < log->count; i++) {
+        const PkiAuditEntry *e = &log->entries[i];
+        const char *name = (e->event_type < 11) ? EVENT_NAMES[e->event_type] : "UNKNOWN";
+        printf("  [%llu] %-16s %s\n",
+               (unsigned long long)e->timestamp, name, e->description);
+    }
 }

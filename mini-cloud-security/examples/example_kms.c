@@ -12,7 +12,8 @@ int main(void) {
         KMS_KEY_MATERIAL_KMS,
         "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\","
         "\"Principal\":{\"AWS\":\"arn:aws:iam::123456789012:root\"},"
-        "\"Action\":\"kms:*\",\"Resource\":\"*\"}]}"
+        "\"Action\":\"kms:*\",\"Resource\":\"*\"}]}",
+        0, 0
     );
     printf("[1] Created CMK:\n");
     printf("    Key ID:    %s\n", cmk->key_id);

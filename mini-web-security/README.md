@@ -1,5 +1,7 @@
 # mini-web-security — Web安全 (C 语言实现)
 
+## Module Status: COMPLETE ✅
+
 纯 C99 实现的 Web 安全库，涵盖 OWASP Top 10、XSS/CSRF、SQL/NoSQL 注入、输入验证、认证与会话管理等核心安全机制。
 
 ## 目录结构
@@ -27,6 +29,8 @@ mini-web-security/
 
 ```bash
 # 编译所有目标
+
+## Module Status: COMPLETE ✅
 make
 
 # 编译并运行基础示例

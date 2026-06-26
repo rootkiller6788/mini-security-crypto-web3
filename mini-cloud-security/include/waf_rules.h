@@ -5,18 +5,18 @@
 #include <stdint.h>
 #include <time.h>
 
-#define WAF_MAX_RULES          256
-#define WAF_MAX_RULE_GROUPS     64
+#define WAF_MAX_RULES           32
+#define WAF_MAX_RULE_GROUPS      8
 #define WAF_MAX_CONDITIONS      16
 #define WAF_MAX_IP_SETS         32
 #define WAF_MAX_REGEX_PATTERNS  64
-#define WAF_HEADER_MAX_LEN     256
-#define WAF_URI_MAX_LEN       2048
-#define WAF_BODY_MAX_LEN      8192
+#define WAF_HEADER_MAX_LEN     128
+#define WAF_URI_MAX_LEN        1024
+#define WAF_BODY_MAX_LEN       4096
 #define WAF_IP_MAX_LEN          45
 #define WAF_RATE_WINDOW_SEC    300
 #define WAF_RATE_THRESHOLD     2000
-#define WAF_RATE_MAX_TRACKED  10000
+#define WAF_RATE_MAX_TRACKED    256
 
 typedef enum {
     WAF_ACTION_ALLOW = 0,
@@ -154,10 +154,10 @@ int               waf_check_xss(const char *input);
 int               waf_check_path_traversal(const char *input);
 int               waf_check_command_injection(const char *input);
 
-waf_action_t      waf_evaluate_rule(const waf_rule_t *rule,
+waf_action_t      waf_evaluate_rule(waf_rule_t *rule,
                                      const waf_request_t *req,
                                      waf_state_t *state);
-waf_action_t      waf_evaluate_group(const waf_rule_group_t *group,
+waf_action_t      waf_evaluate_group(waf_rule_group_t *group,
                                       const waf_request_t *req,
                                       waf_state_t *state);
 waf_action_t      waf_evaluate_all(waf_state_t *state,

@@ -151,7 +151,7 @@ static void demo_full_he(void) {
     he_bigint_set_u64(&two, 2);
     he_bigint_set_u64(&one, 1);
 
-    he_paillier_ct_t cx, cx2, c3x2, c2x, cresult;
+    he_paillier_ct_t cx, cresult, c3x2, c2x;
     he_paillier_encrypt(&cx, &x, &pub);
 
     he_paillier_ct_t cx_squared;

@@ -169,7 +169,7 @@ bool oracle_check_deviation(const OraclePriceFeed *feed, uint64_t price) {
         ? price - feed->latest_price
         : feed->latest_price - price;
     uint64_t max_diff = feed->latest_price * feed->deviation_threshold_bps
-                        / LENDING_BPS_DENOM;
+                        / 10000;
     return diff <= max_diff;
 }
 

@@ -30,12 +30,6 @@ static double laplace_sample(uint64_t *seed, double b) {
     return -b * ((u > 0) ? 1.0 : -1.0) * log(1.0 - 2.0 * fabs(u));
 }
 
-static double sigmoid_clip(double x, double clip) {
-    if (x > clip) return clip;
-    if (x < -clip) return -clip;
-    return x;
-}
-
 /* ---------- Laplace mechanism ---------- */
 
 double dp_laplace_noise(double scale) {
@@ -311,7 +305,31 @@ DPRiskAnalysis dp_analyze_risk(const DPConfig *config, int num_queries, int data
 }
 
 double dp_advanced_composition(double epsilon, double delta, int k, double delta_prime) {
+    (void)delta;
     double eps_prime = k * epsilon * (exp(epsilon) - 1.0) +
                        epsilon * sqrt(2.0 * (double)k * log(1.0 / delta_prime));
     return eps_prime;
+}
+
+/*
+ * L4: Differential Privacy Sequential Composition Theorem (Dwork, 2006)
+ *
+ * If mechanism M1 is ε1-DP and M2 is ε2-DP, then releasing both results
+ * is (ε1 + ε2)-DP.  This is the fundamental building block of privacy budgets.
+ *
+ * Advanced composition (Dwork & Roth, 2014, Theorem 3.20):
+ * For k-fold adaptive composition with Gaussian noise,
+ * total privacy loss ε_total ≈ ε * sqrt(2k * ln(1/δ)) + k * ε * (e^ε - 1)
+ * using the moments accountant method (Abadi et al., 2016).
+ */
+double dp_sequential_eps(const double *epsilons, int k) {
+    double total = 0.0;
+    for (int i = 0; i < k; i++) total += epsilons[i];
+    return total;
+}
+double dp_moments_accountant(double eps, double delta, int k) {
+    if (eps <= 0.0 || k <= 0) return 0.0;
+    double log_delta = log(1.0 / delta);
+    if (log_delta <= 0.0) log_delta = 1.0;
+    return eps * sqrt(2.0 * k * log_delta);
 }

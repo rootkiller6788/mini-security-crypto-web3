@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "hash_func.h"
+
+/* Forward declaration */
+typedef struct X509Certificate X509Certificate;
 
 /* ─── RSA-PSS ────────────────────────────────────────────────── */
 
@@ -41,11 +45,47 @@ bool ecdsa_verify(const void *pub_point, const uint8_t *hash, size_t hash_len,
                   const EcdsaSignature *sig);
 void ecdsa_sig_encode(const EcdsaSignature *sig, uint8_t *der, size_t *der_len);
 
+/* ─── DSA (Digital Signature Algorithm, FIPS 186) ─────────────── */
+
+#define DSA_P_BYTES 128
+#define DSA_Q_BYTES  20
+#define DSA_G_BYTES 128
+#define DSA_SIG_MAX  48
+
+typedef struct DsaParams {
+    uint8_t p[DSA_P_BYTES];
+    uint8_t q[DSA_Q_BYTES];
+    uint8_t g[DSA_P_BYTES];
+} DsaParams;
+
+typedef struct DsaKeyPair {
+    uint8_t public_key[DSA_P_BYTES];
+    uint8_t private_key[DSA_Q_BYTES];
+    DsaParams params;
+} DsaKeyPair;
+
+void dsa_params_init_small(DsaParams *params);
+bool dsa_generate_keypair(DsaKeyPair *kp, const DsaParams *params);
+bool dsa_sign(const DsaKeyPair *kp, const uint8_t *hash, size_t hash_len,
+              uint8_t *sig, size_t *sig_len);
+bool dsa_verify(const DsaKeyPair *kp, const uint8_t *hash, size_t hash_len,
+                const uint8_t *sig, size_t sig_len);
+
+/* ─── Certificate Fingerprints ────────────────────────────────── */
+
+#define CERT_FP_MAX_LEN 64
+
+void x509_sha256_fingerprint(const X509Certificate *cert, uint8_t fp[SHA256_DIGEST_SIZE]);
+void x509_spki_fingerprint(const X509Certificate *cert, uint8_t fp[SHA256_DIGEST_SIZE]);
+int  x509_fingerprint_to_hex(const uint8_t *fp, size_t fp_len,
+                              char *hex, size_t hex_cap);
+
 /* ─── Hash-then-Sign ─────────────────────────────────────────── */
 
 typedef enum SignAlgorithm {
     SIG_RSA_PSS,
-    SIG_ECDSA
+    SIG_ECDSA,
+    SIG_DSA
 } SignAlgorithm;
 
 typedef struct Signer {

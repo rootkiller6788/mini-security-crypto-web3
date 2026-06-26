@@ -1,5 +1,7 @@
 # mini-trusted-compute — 可信计算 (C 语言实现)
 
+## Module Status: COMPLETE ✅
+
 ## Overview
 
 mini-trusted-compute 提供可信执行环境 (TEE)、远程证明、机密计算和 TPM 2.0 平台信任的 C99 实现。

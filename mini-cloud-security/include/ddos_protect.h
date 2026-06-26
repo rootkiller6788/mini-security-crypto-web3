@@ -6,7 +6,7 @@
 #include <time.h>
 
 #define DDOS_MAX_CLIENTS      65536
-#define DDOS_MAX_SOURCES      16384
+#define DDOS_MAX_SOURCES        512
 #define DDOS_MAX_RULES          128
 #define DDOS_IP_LEN              45
 #define DDOS_RATE_WINDOW          5
@@ -165,7 +165,7 @@ int               ddos_deactivate_blackhole(ddos_protection_t *dp);
 int               ddos_scrub_traffic(ddos_protection_t *dp,
                                        const char *source_ip);
 
-float             ddos_calculate_entropy(ddos_protection_t *dp);
+float             ddos_calculate_entropy(const ddos_protection_t *dp);
 int               ddos_is_amplification_attack(ddos_protection_t *dp,
                                                 const char *source_ip);
 const char*       ddos_attack_type_name(ddos_attack_type_t t);

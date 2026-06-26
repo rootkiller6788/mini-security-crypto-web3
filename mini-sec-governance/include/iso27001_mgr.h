@@ -10,6 +10,9 @@
 #define ISO27001_MAX_THREATS      128
 #define ISO27001_MAX_RISKS        512
 #define ISO27001_SOA_MAX_CLASSES  64
+#define ISO27001_MAX_KPIS         32
+#define ISO27001_MAX_INCIDENTS   128
+#define ISO27001_MAX_CLAUSES      10
 
 typedef enum {
     ISO27001_STATUS_NOT_IMPL,
@@ -106,6 +109,63 @@ typedef struct {
     int             review_year;
 } ISO27001_ManagementReview;
 
+/* ── Control KPI (Key Performance Indicator) ── */
+typedef struct {
+    int        kpi_id;
+    const char *name;
+    const char *metric;
+    double     current_value;
+    double     target_value;
+    double     threshold_warn;  /* below this → warning */
+    double     threshold_crit;  /* below this → critical */
+    int        control_ref;     /* linked Annex A control ID */
+    int        trending;        /* 1=improving, 0=stable, -1=declining */
+} ISO27001_KPI;
+
+/* ── Incident Record ── */
+typedef enum {
+    ISO27001_INC_OPEN       = 0,
+    ISO27001_INC_ANALYZING  = 1,
+    ISO27001_INC_CONTAINED  = 2,
+    ISO27001_INC_RESOLVED   = 3,
+    ISO27001_INC_CLOSED     = 4
+} ISO27001_IncidentState;
+
+typedef struct {
+    int    inc_id;
+    const char *title;
+    const char *description;
+    const char *reported_by;
+    int    reported_year;
+    int    reported_month;
+    int    severity;          /* 1-5 */
+    ISO27001_IncidentState state;
+    const char *root_cause;
+    const char *corrective_action;
+    double containment_hours;
+    double recovery_hours;
+} ISO27001_Incident;
+
+/* ── Risk Appetite Statement (L2) ── */
+typedef struct {
+    double max_acceptable_ale;
+    double max_single_risk_score;
+    int    max_critical_risks;
+    int    max_high_risks;
+    double risk_capacity;
+    int    active;
+} ISO27001_RiskAppetite;
+
+/* ── Clause Compliance Tracker (ISO 27001:2022 clauses 4-10) ── */
+typedef struct {
+    int clause_number;     /* 4 through 10 */
+    const char *clause_name;
+    int requirements_total;
+    int requirements_met;
+    int documentary_evidence;
+    int implemented;
+} ISO27001_ClauseStatus;
+
 typedef struct {
     ISO27001_Control    controls[ISO27001_ANNEX_A_CONTROLS];
     int                 control_count;
@@ -121,9 +181,17 @@ typedef struct {
     int                 audit_count;
     ISO27001_ManagementReview reviews[4];
     int                 review_count;
+    ISO27001_KPI        kpis[ISO27001_MAX_KPIS];
+    int                 kpi_count;
+    ISO27001_Incident   incidents[ISO27001_MAX_INCIDENTS];
+    int                 incident_count;
+    ISO27001_RiskAppetite risk_appetite;
+    ISO27001_ClauseStatus clauses[ISO27001_MAX_CLAUSES];
+    int                 clause_count;
     int                 cert_year;
     int                 cert_stage;
     int                 active;
+    int                 incident_response_plan_active;
 } ISO27001_ISMS;
 
 int  iso27001_init(ISO27001_ISMS *isms, int cert_year);
@@ -146,5 +214,39 @@ int  iso27001_add_review(ISO27001_ISMS *isms, const char *topic,
                           const char *decisions, int year);
 void iso27001_pdca_report(const ISO27001_ISMS *isms);
 int  iso27001_certification_readiness(const ISO27001_ISMS *isms);
+
+/* ── Control Effectiveness ── L5: KPI-based measurement */
+int  iso27001_add_kpi(ISO27001_ISMS *isms, const char *name, const char *metric,
+                       double target, double warn, double crit, int control_ref);
+int  iso27001_update_kpi(ISO27001_ISMS *isms, int kpi_id, double current_value);
+int  iso27001_kpi_trending(ISO27001_ISMS *isms, int kpi_id, int trend);
+void iso27001_kpi_scorecard(const ISO27001_ISMS *isms);
+double iso27001_control_effectiveness(const ISO27001_ISMS *isms, int domain);
+
+/* ── Incident Management ── L2: ISO 27001 A.16 Incident Management */
+int  iso27001_add_incident(ISO27001_ISMS *isms, const char *title,
+                            const char *description, const char *reported_by,
+                            int year, int month, int severity);
+int  iso27001_resolve_incident(ISO27001_ISMS *isms, int inc_id,
+                                const char *root_cause, const char *corrective,
+                                double contain_hours, double recover_hours);
+void iso27001_incident_report(const ISO27001_ISMS *isms);
+int  iso27001_mean_time_to_resolve(const ISO27001_ISMS *isms, double *mttr_hours);
+
+/* ── Risk Appetite ── L2: Board-level risk tolerance framework */
+void iso27001_set_risk_appetite(ISO27001_ISMS *isms, double max_ale,
+                                 double max_score, int max_crit, int max_high);
+int  iso27001_check_risk_appetite(const ISO27001_ISMS *isms,
+                                   double total_ale, int crit_risks,
+                                   int high_risks);
+void iso27001_risk_appetite_report(const ISO27001_ISMS *isms,
+                                    double current_ale, int crit, int high);
+
+/* ── Clause Compliance ── L4: ISO 27001:2022 clause 4-10 tracking */
+void iso27001_init_clauses(ISO27001_ISMS *isms);
+int  iso27001_update_clause(ISO27001_ISMS *isms, int clause_num,
+                              int requirements_met);
+int  iso27001_clause_compliance_pct(const ISO27001_ISMS *isms, int clause_num);
+void iso27001_clause_matrix(const ISO27001_ISMS *isms);
 
 #endif

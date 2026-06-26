@@ -2,6 +2,7 @@
 #include "asymmetric_cipher.h"
 #include "hash_func.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 

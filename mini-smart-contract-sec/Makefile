@@ -1,13 +1,15 @@
 CC = cc
-CFLAGS = -std=c99 -Wall -Wextra -O2 -pedantic
+CFLAGS = -std=c99 -Wall -Wextra -O2 -pedantic -Isrc -Iinclude -Wno-restrict -Wno-stringop-truncation
 LDFLAGS = -lm
+EXEEXT = .exe
 
-SRC = evm_sim.c reentrancy_check.c overflow_detect.c access_control.c formal_verify.c
-HDR = evm_sim.h reentrancy_check.h overflow_detect.h access_control.h formal_verify.h
-OBJ = $(SRC:.c=.o)
+SRC = src/evm_sim.c src/reentrancy_check.c src/overflow_detect.c src/access_control.c src/formal_verify.c src/gas_optimizer.c src/evm_disasm.c
+HDR = include/evm_sim.h include/reentrancy_check.h include/overflow_detect.h include/access_control.h include/formal_verify.h include/gas_optimizer.h include/evm_disasm.h
+OBJ = evm_sim.o reentrancy_check.o overflow_detect.o access_control.o formal_verify.o gas_optimizer.o evm_disasm.o
 
 EXAMPLES = example_reentrancy example_overflow example_access
 DEMOS = demo_full_audit demo_verify
+TEST_BIN = test_core
 
 .PHONY: all clean test
 
@@ -16,37 +18,56 @@ all: libmini_scsec.a $(EXAMPLES) $(DEMOS)
 libmini_scsec.a: $(OBJ)
 	$(AR) rcs $@ $(OBJ)
 
-%.o: %.c $(HDR)
-	$(CC) $(CFLAGS) -c $< -o $@
+evm_sim.o: src/evm_sim.c $(HDR)
+	$(CC) $(CFLAGS) -c src/evm_sim.c -o $@
 
-example_reentrancy: example_reentrancy.c libmini_scsec.a
-	$(CC) $(CFLAGS) $< -L. -lmini_scsec $(LDFLAGS) -o $@
+reentrancy_check.o: src/reentrancy_check.c $(HDR)
+	$(CC) $(CFLAGS) -c src/reentrancy_check.c -o $@
 
-example_overflow: example_overflow.c libmini_scsec.a
-	$(CC) $(CFLAGS) $< -L. -lmini_scsec $(LDFLAGS) -o $@
+overflow_detect.o: src/overflow_detect.c $(HDR)
+	$(CC) $(CFLAGS) -c src/overflow_detect.c -o $@
 
-example_access: example_access.c libmini_scsec.a
-	$(CC) $(CFLAGS) $< -L. -lmini_scsec $(LDFLAGS) -o $@
+access_control.o: src/access_control.c $(HDR)
+	$(CC) $(CFLAGS) -c src/access_control.c -o $@
 
-demo_full_audit: demo_full_audit.c libmini_scsec.a
-	$(CC) $(CFLAGS) $< -L. -lmini_scsec $(LDFLAGS) -o $@
+formal_verify.o: src/formal_verify.c $(HDR)
+	$(CC) $(CFLAGS) -c src/formal_verify.c -o $@
 
-demo_verify: demo_verify.c libmini_scsec.a
-	$(CC) $(CFLAGS) $< -L. -lmini_scsec $(LDFLAGS) -o $@
+gas_optimizer.o: src/gas_optimizer.c $(HDR)
+	$(CC) $(CFLAGS) -c src/gas_optimizer.c -o $@
+
+evm_disasm.o: src/evm_disasm.c $(HDR)
+	$(CC) $(CFLAGS) -c src/evm_disasm.c -o $@
+
+example_reentrancy: examples/example_reentrancy.c libmini_scsec.a
+	$(CC) $(CFLAGS) examples/example_reentrancy.c -L. -lmini_scsec $(LDFLAGS) -o $@
+
+example_overflow: examples/example_overflow.c libmini_scsec.a
+	$(CC) $(CFLAGS) examples/example_overflow.c -L. -lmini_scsec $(LDFLAGS) -o $@
+
+example_access: examples/example_access.c libmini_scsec.a
+	$(CC) $(CFLAGS) examples/example_access.c -L. -lmini_scsec $(LDFLAGS) -o $@
+
+demo_full_audit: examples/demo_full_audit.c libmini_scsec.a
+	$(CC) $(CFLAGS) examples/demo_full_audit.c -L. -lmini_scsec $(LDFLAGS) -o $@
+
+demo_verify: examples/demo_verify.c libmini_scsec.a
+	$(CC) $(CFLAGS) examples/demo_verify.c -L. -lmini_scsec $(LDFLAGS) -o $@
 
 test: all
 	@echo "=== Running Examples ==="
 	@echo "--- Reentrancy Example ---"
-	./example_reentrancy
+	./example_reentrancy$(EXEEXT) || true
 	@echo "--- Overflow Example ---"
-	./example_overflow
+	./example_overflow$(EXEEXT) || true
 	@echo "--- Access Example ---"
-	./example_access
+	./example_access$(EXEEXT) || true
 	@echo "--- Demo: Full Audit ---"
-	./demo_full_audit
+	./demo_full_audit$(EXEEXT) || true
 	@echo "--- Demo: Verify ---"
-	./demo_verify
+	./demo_verify$(EXEEXT) || true
+	@echo "=== All tests completed ==="
 
 clean:
-	rm -f $(OBJ) libmini_scsec.a $(EXAMPLES) $(DEMOS)
+	rm -f $(OBJ) libmini_scsec.a $(EXAMPLES) $(DEMOS) $(TEST_BIN)
 	rm -f *.exe

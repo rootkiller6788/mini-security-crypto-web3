@@ -6,6 +6,22 @@
 #include <time.h>
 
 #include "fuzzing_tool.h"
+#ifdef _WIN32
+#include <windows.h>
+static double get_time(void) {
+    LARGE_INTEGER f, c;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (double)c.QuadPart / (double)f.QuadPart;
+}
+#else
+#include <sys/time.h>
+static double get_time(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;
+}
+#endif
 
 /* ═══════════════════════════════════════════════════════════════
    Demo: Full Coverage-Guided Fuzzer

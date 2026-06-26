@@ -1,5 +1,7 @@
 # mini-supply-chain-sec — 供应链安全 (C 语言实现)
 
+## Module Status: COMPLETE ✅
+
 ## Overview
 
 A C99 library implementing core supply chain security primitives: SBOM generation (SPDX/CycloneDX), SLSA framework, Sigstore/cosign keyless signing, dependency vulnerability analysis, and in-toto provenance attestation.

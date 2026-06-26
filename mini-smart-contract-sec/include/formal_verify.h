@@ -22,7 +22,7 @@ typedef struct {
     union {
         int64_t  concrete;
         int      sym_id;
-    };
+    } val;
     char     constraint[256];
     uint64_t min_val;
     uint64_t max_val;
@@ -54,6 +54,7 @@ typedef struct {
     bool is_revert;
     bool is_return;
     int  line;
+    char assertion[256];
 } fv_block_t;
 
 typedef struct {

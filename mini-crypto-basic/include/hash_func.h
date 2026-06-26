@@ -65,6 +65,39 @@ void hmac_sha256(const uint8_t *key, size_t key_len,
                  const uint8_t *data, size_t data_len,
                  uint8_t digest[SHA256_DIGEST_SIZE]);
 
+/* ─── SHA-512 ─────────────────────────────────────────────────── */
+
+#define SHA512_BLOCK_SIZE  128
+#define SHA512_DIGEST_SIZE  64
+#define SHA512_HASH_COUNT    8
+
+typedef struct Sha512Context {
+    uint8_t  buffer[SHA512_BLOCK_SIZE];
+    uint64_t state[SHA512_HASH_COUNT];
+    uint64_t bit_count_lo;
+    uint64_t bit_count_hi;
+    size_t   buffer_index;
+} Sha512Context;
+
+void sha512_init(Sha512Context *ctx);
+void sha512_update(Sha512Context *ctx, const uint8_t *data, size_t len);
+void sha512_final(Sha512Context *ctx, uint8_t digest[SHA512_DIGEST_SIZE]);
+void sha512_hash(const uint8_t *data, size_t len, uint8_t digest[SHA512_DIGEST_SIZE]);
+
+/* ─── PBKDF2 (RFC 2898) ──────────────────────────────────────── */
+
+#define PBKDF2_MAX_DKLEN 512
+#define PBKDF2_MIN_ITER  1000
+
+bool pbkdf2_hmac_sha256(const uint8_t *password, size_t pw_len,
+                        const uint8_t *salt, size_t salt_len,
+                        uint32_t iterations,
+                        uint8_t *derived_key, size_t dk_len);
+
+/* ─── Constant-Time Comparison ────────────────────────────────── */
+
+bool ct_memcmp(const uint8_t *a, const uint8_t *b, size_t len);
+
 /* ─── Merkle-Damgard ─────────────────────────────────────────── */
 
 typedef struct MerkleDamgardConfig {

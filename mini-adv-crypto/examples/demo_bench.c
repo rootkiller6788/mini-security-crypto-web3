@@ -50,9 +50,9 @@ static void bench_header(const char *section) {
     printf("\n=== %s ===\n", section);
 }
 
-#define BENCH_RUN(name, iterations, block) do { \
+#define BENCH_RUN(name, iterations, ...) do { \
     double __bt0 = bench_tick(); \
-    for (int __bi = 0; __bi < (iterations); __bi++) { block; } \
+    for (int __bi = 0; __bi < (iterations); __bi++) { __VA_ARGS__; } \
     double __bt1 = bench_tick(); \
     double __belapsed = __bt1 - __bt0; \
     printf("  %-40s %8.4f ms  (%d iters, %.2f us/op)\n", \

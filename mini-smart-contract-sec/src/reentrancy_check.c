@@ -179,7 +179,7 @@ int rc_check_cross_func(rc_analyzer_t *a) {
 int rc_check_readonly_reent(rc_analyzer_t *a) {
     int found = 0;
     for (int i = 0; i < a->graph.node_count; i++) {
-        rc_func_node_t *n = &a->graph.nodes[i];
+        const rc_func_node_t *n = &a->graph.nodes[i];
         if (n->has_external_call && !n->has_guard) {
             for (int j = 0; j < a->graph.node_count; j++) {
                 if (i == j) continue;
@@ -267,7 +267,7 @@ void rc_print_report(const rc_analyzer_t *a) {
 
     printf("\n--- Function Patterns ---\n");
     for (int i = 0; i < a->graph.node_count; i++) {
-        rc_func_node_t *n = &a->graph.nodes[i];
+        const rc_func_node_t *n = &a->graph.nodes[i];
         printf("  [%d] %s", n->id, n->name);
         if (n->has_external_call) printf(" (external-call)");
         if (n->has_state_write) printf(" (state-write)");
@@ -284,7 +284,7 @@ void rc_print_report(const rc_analyzer_t *a) {
 
     printf("\n--- Call Graph Edges ---\n");
     for (int i = 0; i < a->graph.edge_count; i++) {
-        rc_call_edge_t *e = &a->graph.edges[i];
+        const rc_call_edge_t *e = &a->graph.edges[i];
         printf("  %s --> %s\n",
                a->graph.nodes[e->from].name,
                a->graph.nodes[e->to].name);

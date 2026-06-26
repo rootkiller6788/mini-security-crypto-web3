@@ -100,7 +100,7 @@ ac_result_t ac_verify_eip2612_permit(const uint8_t owner[AC_ADDR_LEN],
                                       const ac_signature_t *sig);
 
 ac_result_t ac_check_tx_origin(const ac_analyzer_t *a);
-ac_result_t ac_check_delegatecall_risk(const ac_analyzer_t *a,
+ac_result_t ac_check_delegatecall_risk(ac_analyzer_t *a,
                                         const uint8_t target[AC_ADDR_LEN],
                                         bool target_trusted);
 

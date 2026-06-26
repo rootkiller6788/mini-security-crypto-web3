@@ -27,7 +27,7 @@ uint64_t stablecoin_collateral_required(uint64_t debt_amount,
     if (collateral_price == 0) return 0;
     uint64_t collateral = (debt_amount * STABLECOIN_PRICE_PRECISION)
                           / collateral_price;
-    return (collateral * ratio_bps) / LENDING_BPS_DENOM;
+    return (collateral * ratio_bps) / 10000;
 }
 
 void cdp_vault_init(CDPVault *vault, uint64_t min_ratio) {
@@ -51,11 +51,11 @@ CDPMintResult cdp_mint(CDPVault *vault, StablecoinSystem *sys,
     uint64_t new_debt = vault->minted_debt + debt_amount;
     uint64_t min_collateral = (new_debt * STABLECOIN_PRICE_PRECISION
                                * vault->min_ratio_bps)
-                              / (collateral_price * LENDING_BPS_DENOM);
+                              / (collateral_price * 10000);
 
     if (new_collateral < min_collateral && new_debt > 0) return result;
 
-    uint64_t fee = (debt_amount * sys->stability_fee_bps) / LENDING_BPS_DENOM;
+    uint64_t fee = (debt_amount * sys->stability_fee_bps) / 10000;
 
     vault->locked_collateral = new_collateral;
     vault->minted_debt = new_debt;
@@ -81,7 +81,7 @@ CDPCloseResult cdp_close(CDPVault *vault, StablecoinSystem *sys,
     if (!vault->active) return result;
 
     uint64_t repay = amount > vault->minted_debt ? vault->minted_debt : amount;
-    uint64_t fee = (repay * sys->stability_fee_bps) / LENDING_BPS_DENOM;
+    uint64_t fee = (repay * sys->stability_fee_bps) / 10000;
     uint64_t total_repay = repay + fee;
 
     uint64_t collateral_returned = (repay * STABLECOIN_PRICE_PRECISION)
@@ -122,7 +122,7 @@ CDPLiquidationResult cdp_liquidate(CDPVault *vault, StablecoinSystem *sys,
             uint64_t seized = (debt_value * STABLECOIN_PRICE_PRECISION)
                               / collateral_price;
             uint64_t penalty = (seized * sys->liquidation_penalty_bps)
-                               / LENDING_BPS_DENOM;
+                               / 10000;
             uint64_t total_seized = seized + penalty;
 
             if (total_seized > vault->locked_collateral) {
@@ -155,7 +155,7 @@ CDPHealth cdp_get_health(const CDPVault *vault, uint64_t collateral_price,
     memset(&health, 0, sizeof(health));
 
     if (!vault->active || vault->minted_debt == 0) {
-        health.collateral_ratio_bps = LENDING_BPS_DENOM * 10;
+        health.collateral_ratio_bps = 10000 * 10;
         return health;
     }
 
@@ -165,15 +165,15 @@ CDPHealth cdp_get_health(const CDPVault *vault, uint64_t collateral_price,
                         / STABLECOIN_PRICE_PRECISION;
 
     if (health.debt_value > 0) {
-        health.collateral_ratio_bps = (health.collateral_value * LENDING_BPS_DENOM)
+        health.collateral_ratio_bps = (health.collateral_value * 10000)
                                       / health.debt_value;
     } else {
-        health.collateral_ratio_bps = LENDING_BPS_DENOM * 10;
+        health.collateral_ratio_bps = 10000 * 10;
     }
 
     health.max_liquidatable = vault->minted_debt;
-    health.liquidation_profit = (vault->locked_collateral * sys->liquidation_penalty_bps)
-                                / LENDING_BPS_DENOM;
+    health.liquidation_profit = (vault->locked_collateral * STABLECOIN_LIQUIDATION_PENALTY_BPS)
+                                / 10000;
 
     return health;
 }

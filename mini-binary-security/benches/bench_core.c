@@ -73,8 +73,8 @@ int main(int argc, char **argv) {
         double t0 = now_ms();
         for (int i = 0; i < N / 10; i++) {
             security_profile_t p = mitigation_detect();
-            mitigation_assess_level(&p);
-            mitigation_score(&p);
+            (void)mitigation_assess_level(&p);
+            (void)mitigation_score(&p);
         }
         double dt = now_ms() - t0;
         printf("  mitigation_detect+assess:             %d ops in %.1f ms  (%.1f µs/op)\n",

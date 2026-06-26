@@ -1,7 +1,7 @@
 CC       = gcc
-CFLAGS   = -std=c99 -Wall -Wextra -O2 -Iinclude
-LDFLAGS  = -L.
-LDLIBS   = -lssl -lcrypto
+CFLAGS   = -std=c99 -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter -Wno-misleading-indentation -Wno-implicit-fallthrough -O2 -Iinclude
+LDFLAGS  = -L$(BLDDIR)
+LDLIBS   = -lssl -lcrypto -lm -lws2_32
 AR       = ar
 ARFLAGS  = rcs
 
@@ -17,25 +17,30 @@ SRCS = $(SRCDIR)/utxo_model.c \
        $(SRCDIR)/merkle_tree.c \
        $(SRCDIR)/consensus_pow.c \
        $(SRCDIR)/tx_pool.c \
-       $(SRCDIR)/p2p_network.c
+       $(SRCDIR)/p2p_network.c \
+       $(SRCDIR)/script_engine.c \
+       $(SRCDIR)/spv_client.c
 
 OBJS = $(SRCS:$(SRCDIR)/%.c=$(BLDDIR)/%.o)
 
-EXAMPLES = $(BLDDIR)/example_utxo.exe \
-           $(BLDDIR)/example_merkle.exe \
-           $(BLDDIR)/example_pow.exe
+EXAMPLES = $(BLDDIR)/example_utxo \
+           $(BLDDIR)/example_merkle \
+           $(BLDDIR)/example_pow
+DEMOS = $(BLDDIR)/demo_blockchain \
+        $(BLDDIR)/demo_wallet
+TESTS = $(BLDDIR)/test_core
+.PHONY: all clean examples demos lib test
 
-DEMOS = $(BLDDIR)/demo_blockchain.exe \
-        $(BLDDIR)/demo_wallet.exe
+all: lib examples demos test
 
-.PHONY: all clean examples demos lib
-
-all: lib examples demos
+test: $(TESTS)
+	@echo === Running Tests ===
+	@./$(BLDDIR)/test_core
 
 lib: $(BLDDIR)/$(LIBNAME)
 
 $(BLDDIR):
-	@if not exist "$(BLDDIR)" mkdir "$(BLDDIR)"
+	@mkdir -p $(BLDDIR)
 
 $(BLDDIR)/%.o: $(SRCDIR)/%.c | $(BLDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -43,19 +48,22 @@ $(BLDDIR)/%.o: $(SRCDIR)/%.c | $(BLDDIR)
 $(BLDDIR)/$(LIBNAME): $(OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
-$(BLDDIR)/example_utxo.exe: $(EXADIR)/example_utxo.c $(BLDDIR)/$(LIBNAME)
+$(BLDDIR)/example_utxo: $(EXADIR)/example_utxo.c $(BLDDIR)/$(LIBNAME)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lblockchain $(LDLIBS)
 
-$(BLDDIR)/example_merkle.exe: $(EXADIR)/example_merkle.c $(BLDDIR)/$(LIBNAME)
+$(BLDDIR)/example_merkle: $(EXADIR)/example_merkle.c $(BLDDIR)/$(LIBNAME)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lblockchain $(LDLIBS)
 
-$(BLDDIR)/example_pow.exe: $(EXADIR)/example_pow.c $(BLDDIR)/$(LIBNAME)
+$(BLDDIR)/example_pow: $(EXADIR)/example_pow.c $(BLDDIR)/$(LIBNAME)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lblockchain $(LDLIBS)
 
-$(BLDDIR)/demo_blockchain.exe: $(DEMDIR)/demo_blockchain.c $(BLDDIR)/$(LIBNAME)
+$(BLDDIR)/demo_blockchain: $(DEMDIR)/demo_blockchain.c $(BLDDIR)/$(LIBNAME)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lblockchain $(LDLIBS)
 
-$(BLDDIR)/demo_wallet.exe: $(DEMDIR)/demo_wallet.c $(BLDDIR)/$(LIBNAME)
+$(BLDDIR)/demo_wallet: $(DEMDIR)/demo_wallet.c $(BLDDIR)/$(LIBNAME)
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lblockchain $(LDLIBS)
+
+$(BLDDIR)/test_core: tests/test_core.c $(BLDDIR)/$(LIBNAME)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lblockchain $(LDLIBS)
 
 examples: $(EXAMPLES)
@@ -63,4 +71,4 @@ examples: $(EXAMPLES)
 demos: $(DEMOS)
 
 clean:
-	@if exist "$(BLDDIR)" rmdir /s /q "$(BLDDIR)"
+	@rm -rf $(BLDDIR)

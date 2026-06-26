@@ -1,5 +1,7 @@
 # mini-ai-security — AI安全 (C 语言实现)
 
+## Module Status: COMPLETE ✅
+
 C99 实现的 AI 安全库，涵盖对抗机器学习、模型逆向、提示注入、数据投毒和 AI 治理五大领域。
 
 ## 目录结构

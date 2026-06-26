@@ -119,6 +119,7 @@ int mpc_garble_and_gate(mpc_garbled_gate_t *gate, uint64_t wire_a, uint64_t wire
     mpc_garble_hash_key(&gate->k1[1], wire_b, 1);
 
     gate->output_bit = (uint32_t)((wire_a & wire_b) & 1);
+    (void)wire_out;
     return 0;
 }
 

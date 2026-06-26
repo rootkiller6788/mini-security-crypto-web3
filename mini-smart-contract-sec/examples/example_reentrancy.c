@@ -8,7 +8,7 @@ int main(void) {
     /* Define functions */
     int withdraw_id = rc_add_function(&analyzer, "withdraw", false, -1);
     int transfer_id = rc_add_function(&analyzer, "transfer", false, -1);
-    int donate_id  = rc_add_function(&analyzer, "donate", false, -1);
+    (void)rc_add_function(&analyzer, "donate", false, -1);
 
     /* Mark capabilities */
     rc_mark_external_call(&analyzer, withdraw_id);

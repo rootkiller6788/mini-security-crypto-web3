@@ -1,5 +1,7 @@
 #include "symmetric_cipher.h"
+#include "hash_func.h"
 #include <string.h>
+#include <stdlib.h>
 
 /* ─── AES S-Box ─────────────────────────────────────────────── */
 
@@ -206,14 +208,54 @@ const int DES_PC2[48] = {
 static const int DES_SHIFTS[16] = { 1,1,2,2,2,2,2,2,1,2,2,2,2,2,2,1 };
 
 static const uint8_t DES_SBOX[8][4][16] = {
-    {/*S1*/{{14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7},{0,15,7,4,14,2,13,1,10,6,12,11,9,5,3,8},{4,1,14,8,13,6,2,11,15,12,9,7,3,10,5,0},{15,12,8,2,4,9,1,7,5,11,3,14,10,0,6,13}}},
-    {/*S2*/{{15,1,8,14,6,11,3,4,9,7,2,13,12,0,5,10},{3,13,4,7,15,2,8,14,12,0,1,10,6,9,11,5},{0,14,7,11,10,4,13,1,5,8,12,6,9,3,2,15},{13,8,10,1,3,15,4,2,11,6,7,12,0,5,14,9}}},
-    {/*S3*/{{10,0,9,14,6,3,15,5,1,13,12,7,11,4,2,8},{13,7,0,9,3,4,6,10,2,8,5,14,12,11,15,1},{13,6,4,9,8,15,3,0,11,1,2,12,5,10,14,7},{1,10,13,0,6,9,8,7,4,15,14,3,11,5,2,12}}},
-    {/*S4*/{{7,13,14,3,0,6,9,10,1,2,8,5,11,12,4,15},{13,8,11,5,6,15,0,3,4,7,2,12,1,10,14,9},{10,6,9,0,12,11,7,13,15,1,3,14,5,2,8,4},{3,15,0,6,10,1,13,8,9,4,5,11,12,7,2,14}}},
-    {/*S5*/{{2,12,4,1,7,10,11,6,8,5,3,15,13,0,14,9},{14,11,2,12,4,7,13,1,5,0,15,10,3,9,8,6},{4,2,1,11,10,13,7,8,15,9,12,5,6,3,0,14},{11,8,12,7,1,14,2,13,6,15,0,9,10,4,5,3}}},
-    {/*S6*/{{12,1,10,15,9,2,6,8,0,13,3,4,14,7,5,11},{10,15,4,2,7,12,9,5,6,1,13,14,0,11,3,8},{9,14,15,5,2,8,12,3,7,0,4,10,1,13,11,6},{4,3,2,12,9,5,15,10,11,14,1,7,6,0,8,13}}},
-    {/*S7*/{{4,11,2,14,15,0,8,13,3,12,9,7,5,10,6,1},{13,0,11,7,4,9,1,10,14,3,5,12,2,15,8,6},{1,4,11,13,12,3,7,14,10,15,6,8,0,5,9,2},{6,11,13,8,1,4,10,7,9,5,0,15,14,2,3,12}}},
-    {/*S8*/{{13,2,8,4,6,15,11,1,10,9,3,14,5,0,12,7},{1,15,13,8,10,3,7,4,12,5,6,11,0,14,9,2},{7,11,4,1,9,12,14,2,0,6,10,13,15,3,5,8},{2,1,14,7,4,10,8,13,15,12,9,0,3,5,6,11}}}
+    { /* S1 */
+        {14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7},
+        {0,15,7,4,14,2,13,1,10,6,12,11,9,5,3,8},
+        {4,1,14,8,13,6,2,11,15,12,9,7,3,10,5,0},
+        {15,12,8,2,4,9,1,7,5,11,3,14,10,0,6,13}
+    },
+    { /* S2 */
+        {15,1,8,14,6,11,3,4,9,7,2,13,12,0,5,10},
+        {3,13,4,7,15,2,8,14,12,0,1,10,6,9,11,5},
+        {0,14,7,11,10,4,13,1,5,8,12,6,9,3,2,15},
+        {13,8,10,1,3,15,4,2,11,6,7,12,0,5,14,9}
+    },
+    { /* S3 */
+        {10,0,9,14,6,3,15,5,1,13,12,7,11,4,2,8},
+        {13,7,0,9,3,4,6,10,2,8,5,14,12,11,15,1},
+        {13,6,4,9,8,15,3,0,11,1,2,12,5,10,14,7},
+        {1,10,13,0,6,9,8,7,4,15,14,3,11,5,2,12}
+    },
+    { /* S4 */
+        {7,13,14,3,0,6,9,10,1,2,8,5,11,12,4,15},
+        {13,8,11,5,6,15,0,3,4,7,2,12,1,10,14,9},
+        {10,6,9,0,12,11,7,13,15,1,3,14,5,2,8,4},
+        {3,15,0,6,10,1,13,8,9,4,5,11,12,7,2,14}
+    },
+    { /* S5 */
+        {2,12,4,1,7,10,11,6,8,5,3,15,13,0,14,9},
+        {14,11,2,12,4,7,13,1,5,0,15,10,3,9,8,6},
+        {4,2,1,11,10,13,7,8,15,9,12,5,6,3,0,14},
+        {11,8,12,7,1,14,2,13,6,15,0,9,10,4,5,3}
+    },
+    { /* S6 */
+        {12,1,10,15,9,2,6,8,0,13,3,4,14,7,5,11},
+        {10,15,4,2,7,12,9,5,6,1,13,14,0,11,3,8},
+        {9,14,15,5,2,8,12,3,7,0,4,10,1,13,11,6},
+        {4,3,2,12,9,5,15,10,11,14,1,7,6,0,8,13}
+    },
+    { /* S7 */
+        {4,11,2,14,15,0,8,13,3,12,9,7,5,10,6,1},
+        {13,0,11,7,4,9,1,10,14,3,5,12,2,15,8,6},
+        {1,4,11,13,12,3,7,14,10,15,6,8,0,5,9,2},
+        {6,11,13,8,1,4,10,7,9,5,0,15,14,2,3,12}
+    },
+    { /* S8 */
+        {13,2,8,4,6,15,11,1,10,9,3,14,5,0,12,7},
+        {1,15,13,8,10,3,7,4,12,5,6,11,0,14,9,2},
+        {7,11,4,1,9,12,14,2,0,6,10,13,15,3,5,8},
+        {2,1,14,7,4,10,8,13,15,12,9,0,3,5,6,11}
+    }
 };
 
 static uint64_t des_permute(uint64_t in, const int *table, int n) {
@@ -336,6 +378,7 @@ void cbc_encrypt_update(CbcContext *cbc, const uint8_t *plain, size_t len,
 }
 
 void cbc_encrypt_final(CbcContext *cbc, uint8_t *cipher, size_t *out_len) {
+    (void)cbc; (void)cipher;
     *out_len = 0;
 }
 
@@ -369,6 +412,7 @@ void cbc_decrypt_update(CbcContext *cbc, const uint8_t *cipher, size_t len,
 }
 
 void cbc_decrypt_final(CbcContext *cbc, uint8_t *plain, size_t *out_len) {
+    (void)cbc; (void)plain;
     *out_len = 0;
 }
 
@@ -403,6 +447,223 @@ void ctr_crypt_update(CtrContext *ctr, const uint8_t *in, size_t len,
         out[i] = in[i] ^ ctr->keystream[ctr->stream_pos++];
     }
     *out_len = len;
+}
+
+/* ─── GCM (Galois/Counter Mode) NIST SP 800-38D ────────────── */
+
+/* Right-shift a 16-byte block as a 128-bit big-endian integer by 1 bit */
+static void gcm_shift_right_block(uint8_t *block) {
+    uint8_t carry = 0;
+    int i;
+    for (i = 0; i < 16; i++) {
+        uint8_t next_carry = block[i] & 1;
+        block[i] = (block[i] >> 1) | (carry << 7);
+        carry = next_carry;
+    }
+}
+
+/* GF(2^128) multiplication, modulus x^128 + x^7 + x^2 + x + 1
+   Operands in big-endian byte order. Algorithm 1 from McGrew & Viega. */
+void gcm_gf_mul(uint8_t *r, const uint8_t *a, const uint8_t *b) {
+    uint8_t Z[16] = {0};
+    uint8_t V[16];
+    memcpy(V, b, 16);
+    int i, j;
+    for (i = 0; i < 16; i++) {
+        for (j = 7; j >= 0; j--) {
+            if ((a[i] >> j) & 1) {
+                int k;
+                for (k = 0; k < 16; k++) Z[k] ^= V[k];
+            }
+            uint8_t lsb = V[15] & 1;
+            gcm_shift_right_block(V);
+            if (lsb) V[0] ^= 0xE1; /* R = 11100001 || 0^120 */
+        }
+    }
+    memcpy(r, Z, 16);
+}
+
+/* GHASH: hash function for GCM, GF(2^128) multiplication accumulator.
+   NOTE: out must be pre-initialized (to zero for first call).
+   This function XORs data blocks into out and multiplies by hash_key. */
+void gcm_ghash(const uint8_t *hash_key, const uint8_t *data, size_t data_len,
+               uint8_t *out) {
+    size_t pos = 0;
+    while (pos + 16 <= data_len) {
+        int i;
+        for (i = 0; i < 16; i++) out[i] ^= data[pos + i];
+        gcm_gf_mul(out, out, hash_key);
+        pos += 16;
+    }
+    if (pos < data_len) {
+        uint8_t last_block[16] = {0};
+        size_t rem = data_len - pos;
+        memcpy(last_block, data + pos, rem);
+        int i;
+        for (i = 0; i < 16; i++) out[i] ^= last_block[i];
+        gcm_gf_mul(out, out, hash_key);
+    }
+}
+
+/* GCM encrypt: derive hash subkey H = E_K(0^128) */
+static void gcm_derive_hash_key(GcmContext *gcm, const uint8_t *key, size_t key_len) {
+    (void)key_len;
+    if (gcm->algo == CIPHER_ALGO_AES128) {
+        AesContext aes;
+        aes128_key_schedule(&aes, key);
+        uint8_t zero[16] = {0};
+        aes128_encrypt_block(&aes, zero, gcm->hash_key);
+        gcm->cipher_ctx = malloc(sizeof(AesContext));
+        memcpy(gcm->cipher_ctx, &aes, sizeof(AesContext));
+    } else {
+        DesContext des;
+        des_key_schedule(&des, key);
+        uint8_t zero[8] = {0};
+        des_encrypt_block(&des, zero, gcm->hash_key);
+        memset(gcm->hash_key + 8, 0, 8);
+        gcm->cipher_ctx = malloc(sizeof(DesContext));
+        memcpy(gcm->cipher_ctx, &des, sizeof(DesContext));
+    }
+}
+
+static void gcm_increment_counter(uint8_t *counter) {
+    int i;
+    for (i = 15; i >= 12; i--) {
+        counter[i]++;
+        if (counter[i] != 0) break;
+    }
+}
+
+void gcm_encrypt_init(GcmContext *gcm, void *cipher_ctx, CipherAlgo algo,
+                      const uint8_t *key, size_t key_len,
+                      const uint8_t *iv, size_t iv_len) {
+    (void)cipher_ctx; /* we regenerate from key */
+    memset(gcm, 0, sizeof(GcmContext));
+    gcm->algo = algo;
+    gcm_derive_hash_key(gcm, key, key_len);
+
+    /* J0 = IV || 0^31 || 1 when len(IV)=96 (12 bytes), else GHASH */
+    if (iv_len == 12) {
+        memcpy(gcm->j0, iv, 12);
+        gcm->j0[15] = 0x01;
+    } else {
+        gcm_ghash(gcm->hash_key, iv, iv_len, gcm->j0);
+        uint64_t iv_bits = (uint64_t)iv_len * 8;
+        uint8_t len_block[16] = {0};
+        len_block[8] = (uint8_t)(iv_bits >> 56);
+        len_block[9] = (uint8_t)(iv_bits >> 48);
+        len_block[10] = (uint8_t)(iv_bits >> 40);
+        len_block[11] = (uint8_t)(iv_bits >> 32);
+        len_block[12] = (uint8_t)(iv_bits >> 24);
+        len_block[13] = (uint8_t)(iv_bits >> 16);
+        len_block[14] = (uint8_t)(iv_bits >> 8);
+        len_block[15] = (uint8_t)(iv_bits);
+        int i;
+        for (i = 0; i < 16; i++) gcm->j0[i] ^= len_block[i];
+        gcm_gf_mul(gcm->j0, gcm->j0, gcm->hash_key);
+    }
+
+    memcpy(gcm->counter, gcm->j0, 16);
+    gcm_increment_counter(gcm->counter);
+    gcm->stream_pos = 16;
+    memset(gcm->ghash_state, 0, 16);
+    gcm->aad_len_bits = 0;
+    gcm->data_len_bits = 0;
+}
+
+void gcm_encrypt_aad(GcmContext *gcm, const uint8_t *aad, size_t aad_len) {
+    gcm->aad_len_bits += (uint64_t)aad_len * 8;
+    gcm_ghash(gcm->hash_key, aad, aad_len, gcm->ghash_state);
+}
+
+static void gcm_next_block(GcmContext *gcm) {
+    cipher_encrypt_block(gcm->cipher_ctx, gcm->algo, gcm->counter, gcm->keystream);
+    gcm_increment_counter(gcm->counter);
+    gcm->stream_pos = 0;
+}
+
+void gcm_encrypt_update(GcmContext *gcm, const uint8_t *plain, size_t plain_len,
+                        uint8_t *cipher, size_t *out_len) {
+    size_t bs = (gcm->algo == CIPHER_ALGO_AES128) ? 16 : 8;
+    size_t i;
+    for (i = 0; i < plain_len; i++) {
+        if (gcm->stream_pos >= bs) gcm_next_block(gcm);
+        cipher[i] = plain[i] ^ gcm->keystream[gcm->stream_pos++];
+    }
+    gcm->data_len_bits += (uint64_t)plain_len * 8;
+    /* Update GHASH with ciphertext */
+    gcm_ghash(gcm->hash_key, cipher, plain_len, gcm->ghash_state);
+    *out_len = plain_len;
+}
+
+void gcm_encrypt_final(GcmContext *gcm, uint8_t *tag, size_t tag_len) {
+    /* Process final len(A) || len(C) block */
+    uint8_t final_block[16] = {0};
+    final_block[0] = (uint8_t)(gcm->aad_len_bits >> 56);
+    final_block[1] = (uint8_t)(gcm->aad_len_bits >> 48);
+    final_block[2] = (uint8_t)(gcm->aad_len_bits >> 40);
+    final_block[3] = (uint8_t)(gcm->aad_len_bits >> 32);
+    final_block[4] = (uint8_t)(gcm->aad_len_bits >> 24);
+    final_block[5] = (uint8_t)(gcm->aad_len_bits >> 16);
+    final_block[6] = (uint8_t)(gcm->aad_len_bits >> 8);
+    final_block[7] = (uint8_t)(gcm->aad_len_bits);
+    final_block[8]  = (uint8_t)(gcm->data_len_bits >> 56);
+    final_block[9]  = (uint8_t)(gcm->data_len_bits >> 48);
+    final_block[10] = (uint8_t)(gcm->data_len_bits >> 40);
+    final_block[11] = (uint8_t)(gcm->data_len_bits >> 32);
+    final_block[12] = (uint8_t)(gcm->data_len_bits >> 24);
+    final_block[13] = (uint8_t)(gcm->data_len_bits >> 16);
+    final_block[14] = (uint8_t)(gcm->data_len_bits >> 8);
+    final_block[15] = (uint8_t)(gcm->data_len_bits);
+
+    int i;
+    for (i = 0; i < 16; i++) gcm->ghash_state[i] ^= final_block[i];
+    gcm_gf_mul(gcm->ghash_state, gcm->ghash_state, gcm->hash_key);
+
+    /* Tag = GHASH(H, A, C) XOR E(K, J0) */
+    uint8_t encrypted_j0[16];
+    memcpy(gcm->counter, gcm->j0, 16); /* restore J0 */
+    gcm->stream_pos = 16;
+    gcm_next_block(gcm);
+    memcpy(encrypted_j0, gcm->keystream, 16);
+
+    size_t len = tag_len < 16 ? tag_len : 16;
+    for (i = 0; i < (int)len; i++)
+        tag[i] = gcm->ghash_state[i] ^ encrypted_j0[i];
+
+    if (gcm->cipher_ctx) free(gcm->cipher_ctx);
+}
+
+void gcm_decrypt_init(GcmContext *gcm, void *cipher_ctx, CipherAlgo algo,
+                      const uint8_t *key, size_t key_len,
+                      const uint8_t *iv, size_t iv_len) {
+    gcm_encrypt_init(gcm, cipher_ctx, algo, key, key_len, iv, iv_len);
+}
+
+void gcm_decrypt_aad(GcmContext *gcm, const uint8_t *aad, size_t aad_len) {
+    gcm_encrypt_aad(gcm, aad, aad_len);
+}
+
+bool gcm_decrypt_update(GcmContext *gcm, const uint8_t *cipher, size_t cipher_len,
+                        uint8_t *plain, size_t *out_len) {
+    size_t bs = (gcm->algo == CIPHER_ALGO_AES128) ? 16 : 8;
+    /* Update GHASH with ciphertext FIRST, then decrypt */
+    gcm->data_len_bits += (uint64_t)cipher_len * 8;
+    gcm_ghash(gcm->hash_key, cipher, cipher_len, gcm->ghash_state);
+
+    size_t i;
+    for (i = 0; i < cipher_len; i++) {
+        if (gcm->stream_pos >= bs) gcm_next_block(gcm);
+        plain[i] = cipher[i] ^ gcm->keystream[gcm->stream_pos++];
+    }
+    *out_len = cipher_len;
+    return true;
+}
+
+bool gcm_decrypt_final(GcmContext *gcm, const uint8_t *expected_tag, size_t tag_len) {
+    uint8_t computed_tag[16];
+    gcm_encrypt_final(gcm, computed_tag, sizeof(computed_tag));
+    return ct_memcmp(computed_tag, expected_tag, tag_len);
 }
 
 /* ─── PKCS#7 Padding ────────────────────────────────────────── */

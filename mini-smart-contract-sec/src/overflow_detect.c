@@ -49,29 +49,30 @@ bool od_div_safe(uint64_t a, uint64_t b, uint64_t *result) {
 }
 
 od_result_t od_check_operation(od_analyzer_t *a, const char *op,
-                                uint64_t a, uint64_t b, uint64_t result,
+                                uint64_t lhs, uint64_t rhs, uint64_t result,
                                 int line) {
     od_result_t r = OD_OK;
     uint64_t safe_result = 0;
+    (void)result; /* result is the user-reported value, not used here */
 
     if (strcmp(op, "+") == 0 || strcmp(op, "add") == 0) {
-        if (od_add_overflow(a, b, &safe_result))
+        if (od_add_overflow(lhs, rhs, &safe_result))
             r = OD_OVERFLOW;
     } else if (strcmp(op, "-") == 0 || strcmp(op, "sub") == 0) {
-        if (od_sub_underflow(a, b, &safe_result))
+        if (od_sub_underflow(lhs, rhs, &safe_result))
             r = OD_UNDERFLOW;
     } else if (strcmp(op, "*") == 0 || strcmp(op, "mul") == 0) {
-        if (od_mul_overflow(a, b, &safe_result))
+        if (od_mul_overflow(lhs, rhs, &safe_result))
             r = OD_OVERFLOW;
     } else if (strcmp(op, "/") == 0 || strcmp(op, "div") == 0) {
-        if (b == 0)
+        if (rhs == 0)
             r = OD_DIV_ZERO;
     }
 
     if (r != OD_OK) {
         char expr[256], detail[256];
         snprintf(expr, sizeof(expr), "%llu %s %llu",
-                 (unsigned long long)a, op, (unsigned long long)b);
+                 (unsigned long long)lhs, op, (unsigned long long)rhs);
         snprintf(detail, sizeof(detail),
                  r == OD_OVERFLOW ? "overflow detected" :
                  r == OD_UNDERFLOW ? "underflow detected" : "division by zero");

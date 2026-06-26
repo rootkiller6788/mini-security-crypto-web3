@@ -30,7 +30,6 @@ static bool is_syscall(uint8_t b1, uint8_t b2) {
 }
 static bool is_pop_reg(uint8_t b)     { return (b & 0xF8) == 0x58; }
 static bool is_leave(uint8_t b)       { return b == 0xC9; }
-static bool is_nop(uint8_t b)         { return b == 0x90; }
 static bool is_jmp_reg(uint8_t b1, uint8_t b2) {
     return b1 == 0xFF && (b2 & 0xE0) == 0xE0;
 }
@@ -43,7 +42,6 @@ void rop_gadget_classify(rop_gadget_t *g) {
 
     /* Last byte should be ret (0xC3) */
     bool ends_ret = is_ret_byte(b[n - 1]);
-    bool ends_syscall = (n >= 2) && is_syscall(b[n - 2], b[n - 1]);
 
     if (n == 1 && is_ret_byte(b[0])) {
         /* ret only */
@@ -144,11 +142,11 @@ bool rop_chain_build_execve(const gadget_db_t *db, rop_chain_t *c,
     printf("  5. syscall; ret\n");
 
     /* Scan for needed gadgets */
-    rop_gadget_t *g_rdi = NULL, *g_rsi = NULL, *g_rdx = NULL,
-                 *g_rax = NULL, *g_sys = NULL;
+    const rop_gadget_t *g_rdi = NULL, *g_rsi = NULL, *g_rdx = NULL,
+                       *g_rax = NULL, *g_sys = NULL;
 
     for (uint32_t i = 0; i < db->count; i++) {
-        rop_gadget_t *g = &db->gadgets[i];
+        const rop_gadget_t *g = &db->gadgets[i];
         if (g->class == GADGET_POP_REG && g->reg_pop == 7) g_rdi = g;
         if (g->class == GADGET_POP_REG && g->reg_pop == 6) g_rsi = g;
         if (g->class == GADGET_POP_REG && g->reg_pop == 2) g_rdx = g;

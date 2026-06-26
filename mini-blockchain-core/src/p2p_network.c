@@ -4,13 +4,9 @@
 #include <stdio.h>
 #include <time.h>
 
-#ifdef _WIN32
-#pragma comment(lib, "ws2_32.lib")
-#else
-#include <unistd.h>
+#ifndef _WIN32
 #include <fcntl.h>
 #include <errno.h>
-#include <netdb.h>
 #include <sys/ioctl.h>
 #endif
 
@@ -96,7 +92,7 @@ int p2p_socket_listen(p2p_socket sock, int backlog) {
 int p2p_socket_accept(p2p_socket listen_sock, p2p_socket *client, char ip[P2P_IP_STR_LEN], uint16_t *port) {
     if (listen_sock == P2P_INVALID_SOCKET || !client || !ip || !port) return -1;
     struct sockaddr_in addr;
-    socklen_t addrlen = sizeof(addr);
+    p2p_socklen_t addrlen = sizeof(addr);
     *client = accept(listen_sock, (struct sockaddr *)&addr, &addrlen);
     if (*client == P2P_INVALID_SOCKET) return -1;
     inet_ntop(AF_INET, &addr.sin_addr, ip, P2P_IP_STR_LEN);
@@ -514,28 +510,28 @@ int p2p_inv_create(p2p_inv_type type, const uint8_t hash[32], p2p_inv_item *item
 
 int p2p_inv_broadcast(p2p_peer_manager *pm, p2p_inv_type type, const uint8_t hash[32]) {
     if (!pm || !hash) return -1;
-    uint8_t payload[36];
+    uint8_t payload[37];
     payload[0] = 1;
     uint32_t t = (uint32_t)type;
     memcpy(payload + 1, &t, 4);
     memcpy(payload + 5, hash, 32);
     p2p_message msg;
-    if (p2p_msg_create(P2P_MSG_INV, payload, 36, &msg) != 0) return -1;
-    p2p_pm_send_all(pm, payload, 36);
+    if (p2p_msg_create(P2P_MSG_INV, payload, 37, &msg) != 0) return -1;
+    p2p_pm_send_all(pm, payload, 37);
     p2p_msg_free(&msg);
     return 0;
 }
 
 int p2p_inv_getdata(p2p_peer_manager *pm, p2p_inv_type type, const uint8_t hash[32]) {
     if (!pm || !hash) return -1;
-    uint8_t payload[36];
+    uint8_t payload[37];
     payload[0] = 1;
     uint32_t t = (uint32_t)type;
     memcpy(payload + 1, &t, 4);
     memcpy(payload + 5, hash, 32);
     p2p_message msg;
-    if (p2p_msg_create(P2P_MSG_GETDATA, payload, 36, &msg) != 0) return -1;
-    p2p_pm_send_all(pm, payload, 36);
+    if (p2p_msg_create(P2P_MSG_GETDATA, payload, 37, &msg) != 0) return -1;
+    p2p_pm_send_all(pm, payload, 37);
     p2p_msg_free(&msg);
     return 0;
 }

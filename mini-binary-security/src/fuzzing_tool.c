@@ -606,12 +606,12 @@ void fuzzer_print_status(const fuzzer_state_t *fs) {
     double elapsed = get_time() - fs->stats.start_time;
     uint64_t eps = elapsed > 0.001
         ? (uint64_t)((double)fs->stats.total_execs / elapsed) : 0;
-    printf("[STATUS] execs: %6llu | paths: %4u | crashes: %3u/%3u |"
+    printf("[STATUS] execs: %6llu | paths: %4u | crashes: %3llu/%3u |"
            " cycles: %2llu | %4llu/sec\n",
            (unsigned long long)fs->stats.total_execs,
            fs->corpus.count,
-           fs->stats.unique_crashes,
-           fs->crashes.count,
+           (unsigned long long)fs->stats.unique_crashes,
+           (unsigned int)fs->crashes.count,
            (unsigned long long)fs->stats.cycles_done,
            (unsigned long long)eps);
 }

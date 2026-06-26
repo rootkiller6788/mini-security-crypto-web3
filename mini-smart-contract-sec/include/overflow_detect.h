@@ -42,7 +42,7 @@ bool od_mul_overflow(uint64_t a, uint64_t b, uint64_t *result);
 bool od_div_safe(uint64_t a, uint64_t b, uint64_t *result);
 
 od_result_t od_check_operation(od_analyzer_t *a, const char *op,
-                                uint64_t a, uint64_t b, uint64_t result,
+                                uint64_t lhs, uint64_t rhs, uint64_t result,
                                 int line);
 
 od_result_t od_check_timestamp(od_analyzer_t *a, uint64_t ts, int line);

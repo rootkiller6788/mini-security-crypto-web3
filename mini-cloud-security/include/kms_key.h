@@ -5,13 +5,13 @@
 #include <stdint.h>
 #include <time.h>
 
-#define KMS_MAX_KEYS           128
-#define KMS_MAX_GRANTS         256
+#define KMS_MAX_KEYS            64
+#define KMS_MAX_GRANTS          64
 #define KMS_MAX_REGIONS         16
 #define KMS_KEY_ID_LEN          64
 #define KMS_KEY_ARN_LEN        256
-#define KMS_MAX_PLAINTEXT     65536
-#define KMS_MAX_CIPHERTEXT    65536
+#define KMS_MAX_PLAINTEXT      8192
+#define KMS_MAX_CIPHERTEXT     8192
 #define KMS_AES_KEY_SIZE        32
 #define KMS_AES_GCM_IV_SIZE     12
 #define KMS_AES_GCM_TAG_SIZE    16
@@ -79,7 +79,7 @@ typedef struct {
     time_t         last_rotation;
     time_t         creation_date;
     time_t         deletion_date;
-    char           policy_json[8192];
+    char           policy_json[2048];
 } kms_key_t;
 
 typedef struct {
@@ -124,7 +124,9 @@ kms_key_t*  kms_create_key(const char *description, kms_key_spec_t spec,
                             unsigned char multi_region, unsigned char hsm);
 kms_key_t*  kms_create_key_with_policy(const char *description, kms_key_spec_t spec,
                                         kms_key_usage_t usage, kms_origin_t origin,
-                                        const char *policy_json);
+                                        const char *policy_json,
+                                        unsigned char multi_region,
+                                        unsigned char hsm);
 void        kms_enable_key(kms_key_t *key);
 void        kms_disable_key(kms_key_t *key);
 void        kms_schedule_key_deletion(kms_key_t *key, int pending_days);

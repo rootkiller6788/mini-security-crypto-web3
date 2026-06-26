@@ -95,8 +95,11 @@ static int test_stablecoin_cdp_mint(void) {
     stablecoin_system_init(&sc_sys, STABLECOIN_OVERCOLLATERALIZED);
     CDPVault vault;
     cdp_vault_init(&vault, STABLECOIN_MIN_COLLATERAL_RATIO_BPS);
-    CDPMintResult result = cdp_mint(&vault, &sc_sys, 200000, 100, 10000);
+    /* 300M collateral units @ price=100M/unit (= 300M USD value) */
+    /* mint 100M DAI debt (= 100M USD value, 300% collateral ratio) */
+    CDPMintResult result = cdp_mint(&vault, &sc_sys, 300000000, 100000000, 100000000);
     CHECK(result.mint_amount > 0, "mint amount is zero");
+    CHECK(result.success, "mint should succeed");
     CHECK(result.required_collateral > 0, "collateral is zero");
     PASS();
     return 0;
@@ -108,8 +111,8 @@ static int test_cdp_is_safe(void) {
     cdp_vault_init(&vault, STABLECOIN_MIN_COLLATERAL_RATIO_BPS);
     StablecoinSystem sc_sys;
     stablecoin_system_init(&sc_sys, STABLECOIN_OVERCOLLATERALIZED);
-    cdp_mint(&vault, &sc_sys, 300000, 100, 10000);
-    CHECK(cdp_is_safe(&vault, 100, 100), "CDP should be safe");
+    cdp_mint(&vault, &sc_sys, 300000000, 100000000, 100000000);
+    CHECK(cdp_is_safe(&vault, 100000000, 100000000), "CDP should be safe");
     PASS();
     return 0;
 }
